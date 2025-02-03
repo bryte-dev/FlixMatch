@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import axios from "axios";
 
 const Trending = () => {
   const [trendingData, setTrendingData] = useState([]);
+  const [movies, setMovies] = useState([]); // Stocke les films de la BDD
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [watchlist, setWatchlist] = useState([]);
@@ -16,7 +18,7 @@ const Trending = () => {
           {
             method: "GET",
             headers: {
-              "Authorization": `Bearer eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJmYjQ0ZGM1ODRkMWU3YzYyZDA3MjAwNjIyZTUxZWMzMyIsIm5iZiI6MTczODA1MzkzMi42MTc5OTk4LCJzdWIiOiI2Nzk4OTkyYzNhZTM1NWM0Nzg4ZjViNzUiLCJzY29wZXMiOlsiYXBpX3JlYWQiXSwidmVyc2lvbiI6MX0.4SkP12tF6GTnVC9rciojEakLBoEj94YtPRLdvokCYZA`, // Remplace par ta propre clé API
+              Authorization: `Bearer eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJmYjQ0ZGM1ODRkMWU3YzYyZDA3MjAwNjIyZTUxZWMzMyIsIm5iZiI6MTczODA1MzkzMi42MTc5OTk4LCJzdWIiOiI2Nzk4OTkyYzNhZTM1NWM0Nzg4ZjViNzUiLCJzY29wZXMiOlsiYXBpX3JlYWQiXSwidmVyc2lvbiI6MX0.4SkP12tF6GTnVC9rciojEakLBoEj94YtPRLdvokCYZA`, 
             },
           }
         );
@@ -28,7 +30,6 @@ const Trending = () => {
         const data = await response.json();
 
         if (data.results) {
-          // Mélanger les résultats pour plus de variété (randomisation)
           const shuffledResults = data.results.sort(() => 0.5 - Math.random());
           setTrendingData((prevData) => [...prevData, ...shuffledResults]);
         }
@@ -42,7 +43,13 @@ const Trending = () => {
     fetchTrending();
   }, [page]);
 
-  // Fonction pour charger plus de données au scroll
+  // Fetch des films en base PostgreSQL
+  useEffect(() => {
+    axios.get("http://localhost:3000/")
+      .then(res => setMovies(res.data))
+      .catch(err => console.error(err));
+  }, []);
+
   const handleScroll = () => {
     const bottom =
       window.innerHeight + document.documentElement.scrollTop ===
@@ -59,14 +66,12 @@ const Trending = () => {
     };
   }, [loading]);
 
-  // Fonction pour ajouter à la watchlist
   const addToWatchlist = (id) => {
     if (!watchlist.includes(id)) {
       setWatchlist([...watchlist, id]);
     }
   };
 
-  // Fonction pour ajouter à la junklist
   const addToJunklist = (id) => {
     if (!junklist.includes(id)) {
       setJunklist([...junklist, id]);
@@ -93,6 +98,18 @@ const Trending = () => {
           ))
         )}
       </ul>
+
+      <h2>Films en Base</h2>
+      <ul>
+        {movies.length === 0 ? (
+          <li>Aucun film en base</li>
+        ) : (
+          movies.map((movie) => (
+            <li key={movie.id}>{movie.title}</li>
+          ))
+        )}
+      </ul>
+
       {loading && <div>Chargement des données...</div>}
     </div>
   );

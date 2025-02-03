@@ -1,0 +1,32 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Movie {
+  id         Int       @id @default(autoincrement())
+  tmdb_id    Int       @unique
+  title      String
+  media_type String
+  watchlists Watchlist[]
+}
+
+model Watchlist {
+  id       Int    @id @default(autoincrement())
+  userId   Int
+  movieId  Int
+  status   String  @default("active") // "active" | "junk"
+  user     User   @relation(fields: [userId], references: [id])
+  movie    Movie  @relation(fields: [movieId], references: [id])
+}
+
+model User {
+  id    Int    @id @default(autoincrement())
+  email String @unique
+  name  String
+  watchlists Watchlist[]
+}
