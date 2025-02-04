@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 
-const Trending = () => {
+const Home = () => {
   const [trendingData, setTrendingData] = useState([]);
   const [movies, setMovies] = useState([]); // Stocke les films de la BDD
   const [loading, setLoading] = useState(true);
@@ -66,15 +66,19 @@ const Trending = () => {
     };
   }, [loading]);
 
-  const addToWatchlist = (id) => {
-    if (!watchlist.includes(id)) {
-      setWatchlist([...watchlist, id]);
-    }
-  };
-
-  const addToJunklist = (id) => {
-    if (!junklist.includes(id)) {
-      setJunklist([...junklist, id]);
+  const addToWatchlist = async (movie) => {
+    try {
+      const response = await axios.post("http://localhost:3000/watchlist", {
+        tmdb_id: movie.id,
+        title: movie.title || movie.name,
+        media_type: movie.media_type,
+        poster_path: movie.poster_path,  // On envoie l'affiche
+      });
+  
+      alert(response.data.message);
+    } catch (error) {
+      console.error("Erreur lors de l'ajout à la watchlist", error);
+      alert(error.response?.data?.message || "Erreur serveur");
     }
   };
 
@@ -83,36 +87,33 @@ const Trending = () => {
   }
 
   return (
-    <div>
-      <h2>Tendances du moment</h2>
-      <ul>
+    <div className="p-4">
+      <h1 className="text-2xl font-bold mb-4">Découvrir</h1>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {trendingData.length === 0 ? (
-          <li>Aucune donnée à afficher</li>
+          <div>Aucune donnée à afficher</div>
         ) : (
-          trendingData.map((item) => (
-            <li key={item.id}>
-              {item.title || item.name} - {item.media_type}
-              <button onClick={() => addToWatchlist(item.id)}>Ajouter à Watchlist</button>
-              <button onClick={() => addToJunklist(item.id)}>Ajouter à Junklist</button>
-            </li>
+          trendingData.map((movie) => (
+            <div key={movie.id} className="bg-gray-800 text-white p-4 rounded-lg">
+              <img 
+                src={`https://image.tmdb.org/t/p/w500/${movie.poster_path}`} 
+                alt={movie.title} 
+                className="rounded-lg w-full"
+              />
+              <h2 className="text-lg font-bold mt-2">{movie.title}</h2>
+              <button
+                onClick={() => addToWatchlist(movie)}
+                className="mt-3 bg-blue-1000 text-black p-2 rounded-lg"
+              >
+              Ça m'intéresse !  
+              </button>
+            </div>
           ))
         )}
-      </ul>
-
-      <h2>Films en Base</h2>
-      <ul>
-        {movies.length === 0 ? (
-          <li>Aucun film en base</li>
-        ) : (
-          movies.map((movie) => (
-            <li key={movie.id}>{movie.title}</li>
-          ))
-        )}
-      </ul>
-
+      </div>
       {loading && <div>Chargement des données...</div>}
     </div>
   );
 };
 
-export default Trending;
+export default Home;

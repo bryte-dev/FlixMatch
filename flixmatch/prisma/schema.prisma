@@ -7,26 +7,33 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id         Int        @id @default(autoincrement())
+  email      String     @unique
+  name       String
+}
+
 model Movie {
-  id         Int       @id @default(autoincrement())
-  tmdb_id    Int       @unique
-  title      String
+  id       Int     @id @default(autoincrement())
+  tmdb_id  Int     @unique // ID du film depuis TMDB
+  title    String
   media_type String
+  poster_path String
   watchlists Watchlist[]
 }
 
 model Watchlist {
-  id       Int    @id @default(autoincrement())
-  userId   Int
-  movieId  Int
-  status   String  @default("active") // "active" | "junk"
-  user     User   @relation(fields: [userId], references: [id])
-  movie    Movie  @relation(fields: [movieId], references: [id])
+  id        Int     @id @default(autoincrement())
+  movieId   Int     @unique  // Un film ne peut être dans la watchlist qu'une fois
+  status    WatchlistStatus @default(WATCHLIST)
+  rating    Int?   // Note du film (1-10)
+  isFavorite Boolean @default(false) // Si le film est favori ou non
+
+  movie     Movie  @relation(fields: [movieId], references: [id])
 }
 
-model User {
-  id    Int    @id @default(autoincrement())
-  email String @unique
-  name  String
-  watchlists Watchlist[]
+enum WatchlistStatus {
+  WATCHLIST  // Film ajouté mais pas encore vu
+  SEEN       // Film marqué comme vu
+  JUNK       // Film mis à la corbeille
 }
