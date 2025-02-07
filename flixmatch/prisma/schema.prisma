@@ -23,13 +23,13 @@ model Movie {
 }
 
 model Watchlist {
-  id        Int     @id @default(autoincrement())
-  movieId   Int     @unique  // Un film ne peut être dans la watchlist qu'une fois
-  status    WatchlistStatus @default(WATCHLIST)
-  rating    Int?   // Note du film (1-10)
-  isFavorite Boolean @default(false) // Si le film est favori ou non
-
-  movie     Movie  @relation(fields: [movieId], references: [id])
+  id         Int     @id @default(autoincrement())
+  movieId    Int     @unique
+  movie      Movie   @relation(fields: [movieId], references: [id])
+  status     String  @default("WATCHLIST")
+  rating     Int     @default(0)
+  
+  isFavorite Boolean @default(false) // Ajoute ceci
 }
 
 enum WatchlistStatus {

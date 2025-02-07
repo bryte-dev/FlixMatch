@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 
-const Home = () => {
+function Home() {
   const [trendingData, setTrendingData] = useState([]);
-  const [movies, setMovies] = useState([]); // Stocke les films de la BDD
-  const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
   const [watchlist, setWatchlist] = useState([]);
   const [junklist, setJunklist] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
 
+  // Récupérer les films tendances depuis TMDB
   useEffect(() => {
     const fetchTrending = async () => {
       setLoading(true);
@@ -18,7 +18,7 @@ const Home = () => {
           {
             method: "GET",
             headers: {
-              Authorization: `Bearer eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJmYjQ0ZGM1ODRkMWU3YzYyZDA3MjAwNjIyZTUxZWMzMyIsIm5iZiI6MTczODA1MzkzMi42MTc5OTk4LCJzdWIiOiI2Nzk4OTkyYzNhZTM1NWM0Nzg4ZjViNzUiLCJzY29wZXMiOlsiYXBpX3JlYWQiXSwidmVyc2lvbiI6MX0.4SkP12tF6GTnVC9rciojEakLBoEj94YtPRLdvokCYZA`, 
+              Authorization: `Bearer eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJmYjQ0ZGM1ODRkMWU3YzYyZDA3MjAwNjIyZTUxZWMzMyIsIm5iZiI6MTczODA1MzkzMi42MTc5OTk4LCJzdWIiOiI2Nzk4OTkyYzNhZTM1NWM0Nzg4ZjViNzUiLCJzY29wZXMiOlsiYXBpX3JlYWQiXSwidmVyc2lvbiI6MX0.4SkP12tF6GTnVC9rciojEakLBoEj94YtPRLdvokCYZA`,
             },
           }
         );
@@ -28,10 +28,10 @@ const Home = () => {
         }
 
         const data = await response.json();
-
         if (data.results) {
-          const shuffledResults = data.results.sort(() => 0.5 - Math.random());
-          setTrendingData((prevData) => [...prevData, ...shuffledResults]);
+          // Filtrer les doublons
+          const uniqueResults = [...new Map(data.results.map((item) => [item.id, item])).values()];
+          setTrendingData((prevData) => [...new Map([...prevData, ...uniqueResults].map((item) => [item.id, item])).values()]);
         }
       } catch (error) {
         console.error("Erreur lors de la récupération des données", error);
@@ -43,38 +43,41 @@ const Home = () => {
     fetchTrending();
   }, [page]);
 
-  // Fetch des films en base PostgreSQL
+  // Récupérer la watchlist depuis le backend
   useEffect(() => {
-    axios.get("http://localhost:3000/")
-      .then(res => setMovies(res.data))
+    axios.get("http://localhost:3000/watchlist")
+      .then(res => setWatchlist(res.data))
       .catch(err => console.error(err));
   }, []);
 
-  const handleScroll = () => {
-    const bottom =
-      window.innerHeight + document.documentElement.scrollTop ===
-      document.documentElement.offsetHeight;
-    if (bottom && !loading) {
-      setPage((prevPage) => prevPage + 1);
-    }
-  };
-
+  // Récupérer la junklist depuis le backend
   useEffect(() => {
-    window.addEventListener("scroll", handleScroll);
-    return () => {
-      window.removeEventListener("scroll", handleScroll);
-    };
-  }, [loading]);
+    axios.get("http://localhost:3000/junk")
+      .then(res => setJunklist(res.data))
+      .catch(err => console.error(err));
+  }, []);
 
+  // Vérifie si un film est dans la Watchlist ou Junklist
+  const isInWatchlist = (tmdb_id) => watchlist.some((entry) => entry.movie.tmdb_id === tmdb_id);
+  const isInJunk = (tmdb_id) => junklist.some((entry) => entry.movie.tmdb_id === tmdb_id);
+
+  // Filtrer les films pour ne pas afficher ceux déjà en Watchlist ou Junklist
+  const filteredTrendingData = trendingData.filter((item) => !isInWatchlist(item.id) && !isInJunk(item.id));
+
+  // Ajouter un film à la watchlist
   const addToWatchlist = async (movie) => {
+    if (isInWatchlist(movie.id)) {
+      alert("Ce film est déjà dans la watchlist !");
+      return;
+    }
     try {
       const response = await axios.post("http://localhost:3000/watchlist", {
         tmdb_id: movie.id,
         title: movie.title || movie.name,
         media_type: movie.media_type,
-        poster_path: movie.poster_path,  // On envoie l'affiche
+        poster_path: movie.poster_path,
       });
-  
+      setWatchlist((prev) => [...prev, { movie }]); // Ajout direct en watchlist
       alert(response.data.message);
     } catch (error) {
       console.error("Erreur lors de l'ajout à la watchlist", error);
@@ -82,38 +85,48 @@ const Home = () => {
     }
   };
 
-  if (loading && page === 1) {
-    return <div>Chargement...</div>;
+// Gestion de l'infinite scroll
+const handleScroll = () => {
+  if (window.innerHeight + document.documentElement.scrollTop >= document.documentElement.offsetHeight - 50 && !loading) {
+    setPage((prevPage) => prevPage + 1);
   }
-
-  return (
-    <div className="p-4">
-      <h1 className="text-2xl font-bold mb-4">Découvrir</h1>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {trendingData.length === 0 ? (
-          <div>Aucune donnée à afficher</div>
-        ) : (
-          trendingData.map((movie) => (
-            <div key={movie.id} className="bg-gray-800 text-white p-4 rounded-lg">
-              <img 
-                src={`https://image.tmdb.org/t/p/w500/${movie.poster_path}`} 
-                alt={movie.title} 
-                className="rounded-lg w-full"
-              />
-              <h2 className="text-lg font-bold mt-2">{movie.title}</h2>
-              <button
-                onClick={() => addToWatchlist(movie)}
-                className="mt-3 bg-blue-1000 text-black p-2 rounded-lg"
-              >
-              Ça m'intéresse !  
-              </button>
-            </div>
-          ))
-        )}
-      </div>
-      {loading && <div>Chargement des données...</div>}
-    </div>
-  );
 };
+
+useEffect(() => {
+  window.addEventListener("scroll", handleScroll);
+  return () => window.removeEventListener("scroll", handleScroll);
+}, [loading]);
+
+return (
+  <div className="p-4">
+    <h1 className="text-2xl font-bold mb-4 text-center">Tendances du moment</h1>
+
+    {filteredTrendingData.length === 0 ? (
+      <p className="text-center">Aucune donnée à afficher</p>
+    ) : (
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {filteredTrendingData.map((item) => (
+          <div key={item.id} className="bg-gray-800 text-white p-4 rounded-lg">
+            <img
+              src={item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : "https://via.placeholder.com/500x750?text=Pas+d'image"}
+              alt={item.title || item.name}
+              className="rounded-lg w-full"
+            />
+            <h2 className="text-lg font-bold mt-2 text-center">{item.title || item.name}</h2>
+            <button
+              onClick={() => addToWatchlist(item)}
+              className="mt-2 bg-blue-500 hover:bg-blue-700 text-black px-4 py-2 rounded-lg w-full"
+            >
+              Ajouter à Watchlist
+            </button>
+          </div>
+        ))}
+      </div>
+    )}
+
+    {loading && <div className="text-center mt-4">Chargement des données...</div>}
+  </div>
+);
+}
 
 export default Home;
