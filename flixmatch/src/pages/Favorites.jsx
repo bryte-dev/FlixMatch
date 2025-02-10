@@ -1,34 +1,51 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 
-function Favourites() {
+function Favorites() {
   const [movies, setMovies] = useState([]);
 
   useEffect(() => {
     axios.get("http://localhost:3000/favorites")
-      .then(res => setMovies(res.data))
-      .catch(err => console.error(err));
+      .then(res => {
+        console.log("Favoris récupérés :", res.data);
+        setMovies(res.data);
+      })
+      .catch(err => console.error("Erreur lors du chargement des favoris :", err));
   }, []);
+  
 
   const removeFromFavorites = async (movieId) => {
     try {
       await axios.put(`http://localhost:3000/favorites/${movieId}/remove`);
+      
+      // Mettre à jour l'état local : retirer des favoris
       setMovies((prevMovies) => prevMovies.filter((movie) => movie.movie.id !== movieId));
+  
+      alert("Film retiré des favoris et remis dans la Watchlist !");
     } catch (error) {
       console.error("Erreur lors du retrait des favoris", error);
     }
   };
+  
 
   const updateRating = async (movieId, rating) => {
+    console.log(`🔍 Tentative d'update du rating FAVORIS : movieId=${movieId}, rating=${rating}`);
+  
     try {
-      await axios.put(`http://localhost:3000/favorites/${movieId}/rating`, { rating });
-      setMovies((prevMovies) => prevMovies.map(movie => 
-        movie.movie.id === movieId ? { ...movie, rating } : movie
-      ));
+      const response = await axios.put(`http://localhost:3000/favorites/${movieId}/rating`, { rating });
+  
+      console.log("✅ Réponse serveur :", response.data);
+  
+      setMovies((prevMovies) =>
+        prevMovies.map((entry) =>
+          entry.movie.id === movieId ? { ...entry, rating: rating } : entry
+        )
+      );
     } catch (error) {
-      console.error("Erreur lors de la mise à jour de la note", error);
+      console.error("❌ Erreur lors de la mise à jour du rating FAVORIS :", error);
     }
   };
+  
 
   const updateReview = async (movieId, review) => {
     try {
@@ -92,6 +109,6 @@ function Favourites() {
   );
 }
 
-export default Favourites;
+export default Favorites;
 
   

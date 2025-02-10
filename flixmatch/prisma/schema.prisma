@@ -8,32 +8,31 @@ datasource db {
 }
 
 model User {
-  id         Int        @id @default(autoincrement())
-  email      String     @unique
-  name       String
+  id    Int    @id @default(autoincrement())
+  email String @unique
+  name  String
 }
 
 model Movie {
-  id       Int     @id @default(autoincrement())
-  tmdb_id  Int     @unique // ID du film depuis TMDB
-  title    String
-  media_type String
+  id          Int        @id @default(autoincrement())
+  tmdb_id     Int        @unique
+  title       String
+  media_type  String
   poster_path String
-  watchlists Watchlist[]
+  watchlists  Watchlist?
 }
 
 model Watchlist {
   id         Int     @id @default(autoincrement())
   movieId    Int     @unique
-  movie      Movie   @relation(fields: [movieId], references: [id])
   status     String  @default("WATCHLIST")
   rating     Int     @default(0)
-  
-  isFavorite Boolean @default(false) // Ajoute ceci
+  isFavorite Boolean @default(false)
+  movie      Movie   @relation(fields: [movieId], references: [id])
 }
 
 enum WatchlistStatus {
-  WATCHLIST  // Film ajouté mais pas encore vu
-  SEEN       // Film marqué comme vu
-  JUNK       // Film mis à la corbeille
+  WATCHLIST
+  SEEN
+  JUNK
 }

@@ -6,9 +6,14 @@ function Watchlist() {
 
   useEffect(() => {
     axios.get("http://localhost:3000/watchlist")
-      .then(res => setMovies(res.data))
-      .catch(err => console.error(err));
+      .then(res => {
+        console.log("Watchlist récupérée :", res.data);
+        setMovies(res.data);
+      })
+      .catch(err => console.error("Erreur lors du chargement de la watchlist :", err));
   }, []);
+  
+  
 
   const moveToJunk = async (movieId) => {
     try {
@@ -22,18 +27,20 @@ function Watchlist() {
   const toggleFavorite = async (movieId, currentFavorite) => {
     try {
       const newFavoriteStatus = !currentFavorite;
+      console.log(`Mise à jour du favori pour ${movieId} -> ${newFavoriteStatus}`);
+  
       await axios.put(`http://localhost:3000/watchlist/${movieId}/favorite`, { isFavorite: newFavoriteStatus });
   
-      // 🔥 Correction : mise à jour propre de l'état
       setMovies((prevMovies) => 
         prevMovies.map((entry) => 
-          entry.movie.id === movieId ? { ...entry, isFavorite: newFavoriteStatus } : entry
+          entry.movie.id === movieId ? { ...entry, isFavorite: newFavoriteStatus, status: "WATCHLIST" } : entry
         )
       );
     } catch (error) {
-      console.error("Erreur lors de la mise à jour des favoris", error);
+      console.error("Erreur lors de la mise à jour des favoris :", error);
     }
   };
+  
   
 
   const markAsSeen = async (movieId) => {
@@ -84,29 +91,19 @@ function Watchlist() {
 
 
               {/* Bouton pour marquer comme vu */}
-              {entry.status !== "SEEN" && (
-                <button
-                  onClick={() => markAsSeen(entry.movie.id)}
-                  className="mt-2 bg-green-500 hover:bg-green-700 text-black px-4 py-2 rounded-lg w-full"
-                >
-                  Marquer comme vu
-                </button>
-              )}
-
-              {/* Système de notation, visible uniquement si "SEEN" */}
               {entry.status === "SEEN" && (
-                <div className="flex justify-center mt-2">
-                  {[1, 2, 3, 4, 5].map(star => (
-                    <button 
-                      key={star} 
-                      className={`text-2xl ${entry.rating >= star ? "text-yellow-500" : "text-gray-500"}`}
-                      onClick={() => updateRating(entry.movie.id, star)}
-                    >
-                      ★
-                    </button>
-                  ))}
-                </div>
-              )}
+  <div className="flex justify-center mt-2">
+    {[1, 2, 3, 4, 5].map(star => (
+      <button 
+        key={star} 
+        className={`text-2xl ${entry.rating >= star ? "text-yellow-500" : "text-gray-500"}`}
+        onClick={() => updateRating(entry.movie.id, star)}
+      >
+        ★
+      </button>
+    ))}
+  </div>
+)}
 
               <button
                 onClick={() => moveToJunk(entry.movie.id)}

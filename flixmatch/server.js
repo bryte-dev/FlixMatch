@@ -2,6 +2,8 @@ import express from "express";
 import cors from "cors";
 import { PrismaClient } from "@prisma/client";
 
+
+
 const prisma = new PrismaClient();
 const app = express();
 app.use(cors());
@@ -49,16 +51,17 @@ app.post("/watchlist", async (req, res) => {
 app.get("/watchlist", async (req, res) => {
   try {
     const watchlist = await prisma.watchlist.findMany({
-      where: { status: "WATCHLIST" },
+      where: { status: "WATCHLIST" }, // Assure-toi qu'on récupère bien tous les films, même sans isFavorite
       include: { movie: true },
     });
 
     res.json(watchlist);
   } catch (error) {
-    console.error(error);
+    console.error("Erreur lors de la récupération de la watchlist :", error);
     res.status(500).json({ error: "Erreur serveur" });
   }
 });
+
 
 // Déplacer un film vers la corbeille (junklist)
 app.put("/watchlist/:movieId/junk", async (req, res) => {
@@ -75,7 +78,7 @@ app.put("/watchlist/:movieId/junk", async (req, res) => {
 
     await prisma.watchlist.update({
       where: { movieId: Number(movieId) },
-      data: { status: "JUNK" },
+      data: { status: "JUNK", isFavorite: false },
     });
 
     res.status(200).json({ message: "Film déplacé vers la corbeille" });
@@ -130,24 +133,48 @@ app.put("/watchlist/:movieId/favorite", async (req, res) => {
   const { isFavorite } = req.body;
 
   try {
-    const watchlistEntry = await prisma.watchlist.findUnique({
-      where: { movieId: Number(movieId) },
-    });
-
-    if (!watchlistEntry) {
-      return res.status(404).json({ message: "Film non trouvé dans la watchlist" });
-    }
-
-    // 🔥 Correction : Mise à jour correcte avec return des nouvelles données
-    const updatedEntry = await prisma.watchlist.update({
+    const updatedMovie = await prisma.watchlist.update({
       where: { movieId: Number(movieId) },
       data: { isFavorite },
-      include: { movie: true },
     });
 
-    res.status(200).json(updatedEntry);
+    res.status(200).json({ message: "Favoris mis à jour", updatedMovie });
   } catch (error) {
-    console.error(error);
+    console.error("Erreur lors de la mise à jour des favoris :", error);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+
+
+app.put("/favorites/:movieId/remove", async (req, res) => {
+  const { movieId } = req.params;
+
+  try {
+    const updatedMovie = await prisma.watchlist.update({
+      where: { movieId: Number(movieId) },
+      data: { isFavorite: false, status: "WATCHLIST" }, // 🔥 Assure-toi qu'il reste en WATCHLIST
+    });
+
+    res.status(200).json({ message: "Film retiré des favoris et maintenu dans la Watchlist", updatedMovie });
+  } catch (error) {
+    console.error("Erreur lors du retrait des favoris :", error);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+
+
+app.get("/favorites", async (req, res) => {
+  try {
+    const favorites = await prisma.watchlist.findMany({
+      where: { isFavorite: true }, // On récupère uniquement les favoris
+      include: { movie: true }, // Inclure les infos du film
+    });
+
+    res.json(favorites);
+  } catch (error) {
+    console.error("Erreur lors de la récupération des favoris :", error);
     res.status(500).json({ error: "Erreur serveur" });
   }
 });
@@ -171,31 +198,27 @@ app.put("/watchlist/:movieId/seen", async (req, res) => {
 });
 
 // Noter un film (seulement s'il est marqué comme SEEN)
-app.put("/watchlist/:movieId/rating", async (req, res) => {
+app.put("/favorites/:movieId/rating", async (req, res) => {
   const { movieId } = req.params;
   const { rating } = req.body;
 
+  console.log(`🔍 Mise à jour du rating FAVORIS : movieId=${movieId}, rating=${rating}`);
+
+  if (typeof rating !== "number" || rating < 1 || rating > 5) {
+    return res.status(400).json({ error: "La note doit être entre 1 et 5." });
+  }
+
   try {
-    const watchlistEntry = await prisma.watchlist.findUnique({
-      where: { movieId: Number(movieId) },
+    const updatedMovie = await prisma.watchlist.update({
+      where: { movieId: Number(movieId), isFavorite: true }, // 🔥 Vérifie que c'est bien un favori
+      data: { rating: rating },
     });
 
-    if (!watchlistEntry) {
-      return res.status(404).json({ message: "Film non trouvé dans la watchlist" });
-    }
+    console.log("✅ Mise à jour réussie (favoris) :", updatedMovie);
 
-    if (watchlistEntry.status !== "SEEN") {
-      return res.status(400).json({ message: "Tu dois d'abord marquer ce film comme vu avant de le noter" });
-    }
-
-    await prisma.watchlist.update({
-      where: { movieId: Number(movieId) },
-      data: { rating: Number(rating) },
-    });
-
-    res.status(200).json({ message: "Note mise à jour" });
+    res.status(200).json({ message: "Note mise à jour dans Favoris", updatedMovie });
   } catch (error) {
-    console.error(error);
+    console.error("❌ Erreur lors de la mise à jour du rating dans Favoris :", error);
     res.status(500).json({ error: "Erreur serveur" });
   }
 });
