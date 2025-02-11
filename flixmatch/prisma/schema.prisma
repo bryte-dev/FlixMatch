@@ -8,9 +8,10 @@ datasource db {
 }
 
 model User {
-  id    Int    @id @default(autoincrement())
-  email String @unique
-  name  String
+  id       Int    @id @default(autoincrement())
+  email    String @unique
+  password String
+  watchlists Watchlist[]
 }
 
 model Movie {
@@ -25,10 +26,12 @@ model Movie {
 model Watchlist {
   id         Int     @id @default(autoincrement())
   movieId    Int     @unique
+  userId     Int     @unique
   status     String  @default("WATCHLIST")
   rating     Int     @default(0)
   isFavorite Boolean @default(false)
   movie      Movie   @relation(fields: [movieId], references: [id])
+  user      User   @relation(fields: [userId], references: [id])
 }
 
 enum WatchlistStatus {

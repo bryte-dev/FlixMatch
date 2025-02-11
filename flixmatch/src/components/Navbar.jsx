@@ -7,6 +7,7 @@ function Navbar() {
       <Link to="/watchlist" className="hover:underline">Watchlist</Link>
       <Link to="/junk" className="hover:underline">Junk</Link>
       <Link to="/favorites" className="hover:underline">Favoris</Link>
+      <Link to="/seen" className="hover:underline">Vus</Link>
     </nav>
   );
 }

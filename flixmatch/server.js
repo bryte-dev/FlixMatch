@@ -180,45 +180,93 @@ app.get("/favorites", async (req, res) => {
 });
 
 
-// Marquer un film comme vu
+// Route pour marquer un film comme vu
 app.put("/watchlist/:movieId/seen", async (req, res) => {
   const { movieId } = req.params;
 
   try {
+    // Mettre à jour le statut du film
     await prisma.watchlist.update({
       where: { movieId: Number(movieId) },
       data: { status: "SEEN" },
     });
 
-    res.status(200).json({ message: "Film marqué comme vu" });
+    res.status(200).json({ message: "Film marqué comme vu et déplacé vers Seen" });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Erreur serveur" });
   }
 });
 
-// Noter un film (seulement s'il est marqué comme SEEN)
-app.put("/favorites/:movieId/rating", async (req, res) => {
+// Route pour retirer un film vu
+app.put("/seen/:movieId/remove", async (req, res) => {
+  const { movieId } = req.params;
+
+  try {
+    // Mettre à jour le statut du film
+    await prisma.watchlist.update({
+      where: { movieId: Number(movieId) },
+      data: { status: "WATCHLIST" },
+    });
+
+    res.status(200).json({ message: "Film marqué comme vu et déplacé vers Seen" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// Route pour récupérer les films vus
+app.get("/seen", async (req, res) => {
+  try {
+    const seenMovies = await prisma.watchlist.findMany({
+      where: { status: "SEEN" },
+      include: { movie: true },
+    });
+
+    res.json(seenMovies);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// Mettre à jour la note et l'avis dans la page Seen
+app.put("/seen/:movieId/rating", async (req, res) => {
   const { movieId } = req.params;
   const { rating } = req.body;
 
-  console.log(`🔍 Mise à jour du rating FAVORIS : movieId=${movieId}, rating=${rating}`);
-
-  if (typeof rating !== "number" || rating < 1 || rating > 5) {
-    return res.status(400).json({ error: "La note doit être entre 1 et 5." });
-  }
-
   try {
+    if (typeof rating !== "number" || rating < 1 || rating > 5) {
+      return res.status(400).json({ error: "La note doit être entre 1 et 5." });
+    }
+
     const updatedMovie = await prisma.watchlist.update({
-      where: { movieId: Number(movieId), isFavorite: true }, // 🔥 Vérifie que c'est bien un favori
+      where: { movieId: Number(movieId) },
       data: { rating: rating },
     });
 
-    console.log("✅ Mise à jour réussie (favoris) :", updatedMovie);
-
-    res.status(200).json({ message: "Note mise à jour dans Favoris", updatedMovie });
+    res.status(200).json({ message: "Note mise à jour", updatedMovie });
   } catch (error) {
-    console.error("❌ Erreur lors de la mise à jour du rating dans Favoris :", error);
+    console.error("Erreur lors de la mise à jour du rating", error);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// Mettre à jour l'avis du film
+app.put("/seen/:movieId/review", async (req, res) => {
+  const { movieId } = req.params;
+  const { review } = req.body;
+
+  try {
+    const updatedMovie = await prisma.watchlist.update({
+      where: { movieId: Number(movieId) },
+      data: { review: review },
+    });
+
+    res.status(200).json({ message: "Avis mis à jour", updatedMovie });
+  } catch (error) {
+    console.error("Erreur lors de la mise à jour de l'avis", error);
     res.status(500).json({ error: "Erreur serveur" });
   }
 });

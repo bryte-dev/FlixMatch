@@ -16,7 +16,6 @@ function Junk() {
   const restoreFromJunk = async (movieId) => {
     try {
       const response = await axios.put(`http://localhost:3000/junk/${movieId}/restore`);
-      alert(response.data.message);
       // Rafraîchir la liste en retirant le film restauré
       setMovies((prevMovies) => prevMovies.filter((entry) => entry.movie.id !== movieId));
     } catch (error) {

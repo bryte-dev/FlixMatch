@@ -12,12 +12,13 @@ function Watchlist() {
       })
       .catch(err => console.error("Erreur lors du chargement de la watchlist :", err));
   }, []);
-  
-  
 
   const moveToJunk = async (movieId) => {
     try {
+      // Send request to move the movie to the junk list
       await axios.put(`http://localhost:3000/watchlist/${movieId}/junk`);
+
+      // Immediately update the UI to remove the movie from the watchlist
       setMovies((prevMovies) => prevMovies.filter((movie) => movie.movie.id !== movieId));
     } catch (error) {
       console.error("Erreur lors du déplacement vers la corbeille", error);
@@ -28,9 +29,9 @@ function Watchlist() {
     try {
       const newFavoriteStatus = !currentFavorite;
       console.log(`Mise à jour du favori pour ${movieId} -> ${newFavoriteStatus}`);
-  
+
       await axios.put(`http://localhost:3000/watchlist/${movieId}/favorite`, { isFavorite: newFavoriteStatus });
-  
+
       setMovies((prevMovies) => 
         prevMovies.map((entry) => 
           entry.movie.id === movieId ? { ...entry, isFavorite: newFavoriteStatus, status: "WATCHLIST" } : entry
@@ -40,8 +41,6 @@ function Watchlist() {
       console.error("Erreur lors de la mise à jour des favoris :", error);
     }
   };
-  
-  
 
   const markAsSeen = async (movieId) => {
     try {
@@ -51,17 +50,6 @@ function Watchlist() {
       ));
     } catch (error) {
       console.error("Erreur lors du marquage comme vu", error);
-    }
-  };
-
-  const updateRating = async (movieId, rating) => {
-    try {
-      await axios.put(`http://localhost:3000/watchlist/${movieId}/rating`, { rating });
-      setMovies((prevMovies) => prevMovies.map(movie =>
-        movie.movie.id === movieId ? { ...movie, rating } : movie
-      ));
-    } catch (error) {
-      console.error("Erreur lors de la mise à jour de la note", error);
     }
   };
 
@@ -83,28 +71,21 @@ function Watchlist() {
 
               {/* Bouton étoile pour favoris */}
               <button 
-  onClick={() => toggleFavorite(entry.movie.id, entry.isFavorite)}
-  className={`text-2xl block mx-auto transition-all duration-300 ${entry.isFavorite ? "text-yellow-500 scale-110" : "text-gray-500 hover:text-yellow-300"}`}
->
-  ★
-</button>
-
+                onClick={() => toggleFavorite(entry.movie.id, entry.isFavorite)}
+                className={`text-2xl block mx-auto transition-all duration-300 ${entry.isFavorite ? "text-yellow-500 scale-110" : "text-gray-500 hover:text-yellow-300"}`}
+              >
+                ★
+              </button>
 
               {/* Bouton pour marquer comme vu */}
-              {entry.status === "SEEN" && (
-  <div className="flex justify-center mt-2">
-    {[1, 2, 3, 4, 5].map(star => (
-      <button 
-        key={star} 
-        className={`text-2xl ${entry.rating >= star ? "text-yellow-500" : "text-gray-500"}`}
-        onClick={() => updateRating(entry.movie.id, star)}
-      >
-        ★
-      </button>
-    ))}
-  </div>
-)}
-
+              {entry.status !== "SEEN" && (
+                <button
+                  onClick={() => markAsSeen(entry.movie.id)}
+                  className="text-xl text-gray-500 hover:text-green-500 mx-auto block mt-2"
+                >
+                  👁️
+                </button>
+              )}
               <button
                 onClick={() => moveToJunk(entry.movie.id)}
                 className="mt-2 bg-blue-500 hover:bg-blue-700 text-black px-4 py-2 rounded-lg w-full"

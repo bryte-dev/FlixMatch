@@ -3,6 +3,7 @@ import Home from "./pages/Home";
 import Watchlist from "./pages/Watchlist";
 import Junk from "./pages/Junk";
 import Favorites from "./pages/Favorites";
+import Seen from "./pages/Seen";
 import Navbar from "./components/Navbar";
 
 function App() {
@@ -14,6 +15,7 @@ function App() {
         <Route path="/watchlist" element={<Watchlist />} />
         <Route path="/junk" element={<Junk />} />
         <Route path="/favorites" element={<Favorites />} />
+        <Route path="/seen" element={<Seen />} />
       </Routes>
     </>
   );

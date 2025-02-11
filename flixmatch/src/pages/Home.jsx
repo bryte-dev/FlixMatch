@@ -78,7 +78,6 @@ function Home() {
         poster_path: movie.poster_path,
       });
       setWatchlist((prev) => [...prev, { movie }]); // Ajout direct en watchlist
-      alert(response.data.message);
     } catch (error) {
       console.error("Erreur lors de l'ajout à la watchlist", error);
       alert(error.response?.data?.message || "Erreur serveur");
