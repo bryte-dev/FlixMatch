@@ -3,6 +3,8 @@ import axios from "axios";
 
 function Watchlist() {
   const [movies, setMovies] = useState([]);
+  const [refreshTrigger, setRefreshTrigger] = useState(false);
+
 
   useEffect(() => {
     axios.get("http://localhost:3000/watchlist")
@@ -11,7 +13,7 @@ function Watchlist() {
         setMovies(res.data);
       })
       .catch(err => console.error("Erreur lors du chargement de la watchlist :", err));
-  }, []);
+  }, [refreshTrigger]);
 
   const moveToJunk = async (movieId) => {
     try {
@@ -48,6 +50,7 @@ function Watchlist() {
       setMovies((prevMovies) => prevMovies.map(movie =>
         movie.movie.id === movieId ? { ...movie, status: "SEEN" } : movie
       ));
+      setRefreshTrigger((prev) => !prev); // 🔥 Force le refresh
     } catch (error) {
       console.error("Erreur lors du marquage comme vu", error);
     }

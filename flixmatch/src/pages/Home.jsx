@@ -7,6 +7,8 @@ function Home() {
   const [junklist, setJunklist] = useState([]);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
+  const [refreshTrigger, setRefreshTrigger] = useState(false);
+
 
   // Récupérer les films tendances depuis TMDB
   useEffect(() => {
@@ -48,7 +50,7 @@ function Home() {
     axios.get("http://localhost:3000/watchlist")
       .then(res => setWatchlist(res.data))
       .catch(err => console.error(err));
-  }, []);
+  }, [refreshTrigger]);
 
   // Récupérer la junklist depuis le backend
   useEffect(() => {
@@ -64,7 +66,7 @@ function Home() {
   // Filtrer les films pour ne pas afficher ceux déjà en Watchlist ou Junklist
   const filteredTrendingData = trendingData.filter((item) => !isInWatchlist(item.id) && !isInJunk(item.id));
 
-  // Ajouter un film à la watchlist
+  // Ajoute un film à la watchlist
   const addToWatchlist = async (movie) => {
     if (isInWatchlist(movie.id)) {
       alert("Ce film est déjà dans la watchlist !");
@@ -77,12 +79,15 @@ function Home() {
         media_type: movie.media_type,
         poster_path: movie.poster_path,
       });
+  
       setWatchlist((prev) => [...prev, { movie }]); // Ajout direct en watchlist
+      setRefreshTrigger((prev) => !prev); // 🔥 Force le refresh
     } catch (error) {
       console.error("Erreur lors de l'ajout à la watchlist", error);
       alert(error.response?.data?.message || "Erreur serveur");
     }
   };
+  
 
 // Gestion de l'infinite scroll
 const handleScroll = () => {
