@@ -1,5 +1,7 @@
 import { createContext, useState, useEffect } from "react";
 import axios from "axios";
+axios.defaults.baseURL = "http://localhost:3000"; // Assure-toi que l'URL est correcte
+axios.defaults.withCredentials = true; // 🔥 Permet d'envoyer les cookies à chaque requête
 
 export const AuthContext = createContext();
 

@@ -6,11 +6,25 @@ function Junk() {
 
   // Récupère les films marqués comme "JUNK"
   useEffect(() => {
-    axios
-      .get("http://localhost:3000/junk")
-      .then((res) => setMovies(res.data))
-      .catch((err) => console.error(err));
+    const fetchJunk = async () => {
+      try {
+        const res = await axios.get("http://localhost:3000/junk", { withCredentials: true });
+  
+        console.log("✅ Données reçues (JUNK) :", res.data);
+        if (Array.isArray(res.data)) {
+          setMovies(res.data);
+        } else {
+          console.error("❌ Format inattendu :", res.data);
+        }
+  
+      } catch (error) {
+        console.error("❌ Erreur récupération films corbeille :", error.response?.data || error.message);
+      }
+    };
+  
+    fetchJunk();
   }, []);
+  
 
   // Fonction pour restaurer un film (mettre son status à WATCHLIST)
   const restoreFromJunk = async (movieId) => {

@@ -47,17 +47,18 @@ function Home() {
 
   // Récupérer la watchlist depuis le backend
   useEffect(() => {
-    axios.get("http://localhost:3000/watchlist")
+    axios.get("http://localhost:3000/watchlist", { withCredentials: true })
       .then(res => setWatchlist(res.data))
-      .catch(err => console.error(err));
-  }, [refreshTrigger]);
-
+      .catch(err => console.error("Erreur récupération watchlist :", err));
+  }, []);
+  
   // Récupérer la junklist depuis le backend
   useEffect(() => {
-    axios.get("http://localhost:3000/junk")
-      .then(res => setJunklist(res.data))
-      .catch(err => console.error(err));
+    axios.get("http://localhost:3000/junk", { withCredentials: true })
+      .then(res => setWatchlist(res.data))
+      .catch(err => console.error("Erreur récupération watchlist :", err));
   }, []);
+  
 
   // Vérifie si un film est dans la Watchlist ou Junklist
   const isInWatchlist = (tmdb_id) => watchlist.some((entry) => entry.movie.tmdb_id === tmdb_id);

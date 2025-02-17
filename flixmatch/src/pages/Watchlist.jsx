@@ -7,7 +7,7 @@ function Watchlist() {
 
 
   useEffect(() => {
-    axios.get("http://localhost:3000/watchlist")
+    axios.get("http://localhost:3000/watchlist", { withCredentials: true })
       .then(res => {
         console.log("Watchlist récupérée :", res.data);
         setMovies(res.data);
@@ -46,15 +46,18 @@ function Watchlist() {
 
   const markAsSeen = async (movieId) => {
     try {
-      await axios.put(`http://localhost:3000/watchlist/${movieId}/seen`);
-      setMovies((prevMovies) => prevMovies.map(movie =>
-        movie.movie.id === movieId ? { ...movie, status: "SEEN" } : movie
-      ));
-      setRefreshTrigger((prev) => !prev); // 🔥 Force le refresh
+      // Appel à l'API pour marquer comme vu
+      await axios.put(`http://localhost:3000/watchlist/${movieId}/seen`, {}, { withCredentials: true });
+  
+      // 🔥 Retirer le film de la watchlist (ou de la liste SEEN)
+      setMovies((prevMovies) => prevMovies.filter((movie) => movie.movie.id !== movieId));
+  
     } catch (error) {
-      console.error("Erreur lors du marquage comme vu", error);
+      console.error("❌ Erreur lors du marquage comme vu :", error.response?.data || error.message);
     }
   };
+  
+  
 
   return (
     <div className="p-4">
@@ -82,13 +85,10 @@ function Watchlist() {
 
               {/* Bouton pour marquer comme vu */}
               {entry.status !== "SEEN" && (
-                <button
-                  onClick={() => markAsSeen(entry.movie.id)}
-                  className="text-xl text-gray-500 hover:text-green-500 mx-auto block mt-2"
-                >
-                  👁️
-                </button>
+                  <button onClick={() => markAsSeen(entry.movie.id)} className={`text-2xl block mx-auto transition-all duration-300 ${entry.markAsSeen ? "text-yellow-500 scale-110" : "text-gray-500 hover:text-yellow-300"}`}>👁️</button>
               )}
+
+              
               <button
                 onClick={() => moveToJunk(entry.movie.id)}
                 className="mt-2 bg-blue-500 hover:bg-blue-700 text-black px-4 py-2 rounded-lg w-full"

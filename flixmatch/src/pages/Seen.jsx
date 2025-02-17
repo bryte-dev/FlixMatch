@@ -5,26 +5,37 @@ function Seen() {
   const [movies, setMovies] = useState([]);
 
   useEffect(() => {
-    axios.get("http://localhost:3000/seen")
-      .then(res => {
-        console.log("Films vus récupérés :", res.data);
-        setMovies(res.data);
-      })
-      .catch(err => console.error("Erreur lors du chargement des films vus :", err));
+    const fetchSeen = async () => {
+      try {
+        const res = await axios.get("http://localhost:3000/seen", { withCredentials: true });
+  
+        console.log("✅ Données reçues (SEEN) :", res.data);
+        if (Array.isArray(res.data)) {
+          setMovies(res.data);
+        } else {
+          console.error("❌ Format inattendu :", res.data);
+        }
+  
+      } catch (error) {
+        console.error("❌ Erreur récupération films vus :", error.response?.data || error.message);
+      }
+    };
+  
+    fetchSeen();
   }, []);
 
   const removeFromSeen = async (movieId) => {
     try {
-      // Remove the movie from the 'Seen' status and move it to 'Watchlist'
-      await axios.put(`http://localhost:3000/seen/${movieId}/remove`);
+      await axios.put(`http://localhost:3000/seen/${movieId}/remove`, {}, { withCredentials: true });
   
-      // Update the local state to remove the movie from the displayed list
+      // 🔥 Supprime le film de la liste SEEN localement
       setMovies((prevMovies) => prevMovies.filter((movie) => movie.movie.id !== movieId));
+  
     } catch (error) {
-      console.error("Erreur lors de la suppression du film de la liste vue", error);
+      console.error("❌ Erreur lors du retrait de SEEN :", error);
     }
   };
-
+  
   const updateRating = async (movieId, rating) => {
     console.log(`🔍 Mise à jour du rating pour le film ${movieId} : ${rating}`);
 
