@@ -8,34 +8,32 @@ datasource db {
 }
 
 model User {
-  id        Int        @id @default(autoincrement())
-  email     String     @unique
-  password  String
-  createdAt DateTime   @default(now())
+  id       Int    @id @default(autoincrement())
+  email    String @unique
+  password String
   watchlist Watchlist[]
 }
 
 model Movie {
-  id         Int       @id @default(autoincrement())
-  tmdb_id    Int       @unique
-  title      String
-  media_type String
+  id          Int        @id @default(autoincrement())
+  tmdb_id     Int        @unique
+  title       String
+  media_type  String
   poster_path String
-  watchlist  Watchlist[]
+  watchlist   Watchlist?
 }
 
 model Watchlist {
   id         Int     @id @default(autoincrement())
-  userId     Int     // Pas besoin de `@default`, car il sera lié au user via le middleware
-  movieId    Int
-  status     String  @default("WATCHLIST") // "WATCHLIST" | "JUNK" | "SEEN"
+  movieId    Int     @unique
+  userId     Int 
   isFavorite Boolean @default(false)
-  rating     Int?
+  status     String  @default("WATCHLIST")
+  rating     Int     @default(0)
 
-  user       User    @relation(fields: [userId], references: [id])
-  movie      Movie   @relation(fields: [movieId], references: [id])
+  movie Movie @relation(fields: [movieId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
 }
-
 
 
 enum WatchlistStatus {

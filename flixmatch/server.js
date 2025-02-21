@@ -166,31 +166,23 @@ app.put("/watchlist/:movieId/seen", authMiddleware, async (req, res) => {
   const userId = req.userId;
 
   try {
-    // Met à jour le statut du film à "SEEN"
-    const updatedMovie = await prisma.watchlist.updateMany({
+    // Vérifier que le film est bien dans la watchlist du bon user
+    const watchlistEntry = await prisma.watchlist.findFirst({
+      where: { movieId: Number(movieId), userId },
+    });
+
+    if (!watchlistEntry) {
+      return res.status(404).json({ error: "Ce film n'est pas dans ta watchlist." });
+    }
+
+    // Mettre à jour le statut du film à "SEEN"
+    await prisma.watchlist.updateMany({
       where: { movieId: Number(movieId), userId },
       data: { status: "SEEN" },
     });
 
-    // Retirer le film de la Watchlist une fois marqué comme vu
-    if (updatedMovie.count > 0) {
-      const movie = await prisma.watchlist.findFirst({
-        where: { movieId: Number(movieId), userId, status: "SEEN" },
-      });
+    res.status(200).json({ message: "Film marqué comme vu et retiré de la watchlist" });
 
-      // On retire le film de la Watchlist
-      if (movie) {
-        await prisma.watchlist.deleteMany({
-          where: { movieId: Number(movieId), userId, status: "WATCHLIST" },
-        });
-
-        res.status(200).json({ message: "Film marqué comme vu et retiré de la watchlist" });
-      } else {
-        res.status(400).json({ error: "Erreur lors de la mise à jour" });
-      }
-    } else {
-      res.status(400).json({ error: "Le film n'a pas été trouvé dans la watchlist" });
-    }
   } catch (error) {
     console.error("❌ Erreur lors du marquage comme vu :", error);
     res.status(500).json({ error: "Erreur serveur" });
@@ -198,7 +190,8 @@ app.put("/watchlist/:movieId/seen", authMiddleware, async (req, res) => {
 });
 
 
-// 🔹 Rempve un film marqué comme vu
+
+// 🔹 Remove un film marqué comme vu
 app.put("/seen/:movieId/remove", authMiddleware, async (req, res) => {
   const { movieId } = req.params;
   const userId = req.userId;

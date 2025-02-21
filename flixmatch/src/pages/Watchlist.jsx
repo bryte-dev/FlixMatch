@@ -5,12 +5,15 @@ function Watchlist() {
   const [movies, setMovies] = useState([]);
   const [refreshTrigger, setRefreshTrigger] = useState(false);
 
-
   useEffect(() => {
     axios.get("http://localhost:3000/watchlist", { withCredentials: true })
       .then(res => {
         console.log("Watchlist récupérée :", res.data);
-        setMovies(res.data);
+        
+        // Filtrer pour ne garder que ceux qui ne sont PAS "SEEN"
+        const filteredMovies = res.data.filter(movie => movie.status !== "SEEN");
+  
+        setMovies(filteredMovies);
       })
       .catch(err => console.error("Erreur lors du chargement de la watchlist :", err));
   }, [refreshTrigger]);
@@ -43,17 +46,18 @@ function Watchlist() {
       console.error("Erreur lors de la mise à jour des favoris :", error);
     }
   };
-
   const markAsSeen = async (movieId) => {
     try {
-      // Appel à l'API pour marquer comme vu
+      console.log("🧐 Envoi de la requête PUT à /watchlist/" + movieId + "/seen");
+  
       await axios.put(`http://localhost:3000/watchlist/${movieId}/seen`, {}, { withCredentials: true });
   
-      // 🔥 Retirer le film de la watchlist (ou de la liste SEEN)
-      setMovies((prevMovies) => prevMovies.filter((movie) => movie.movie.id !== movieId));
+      // Supprimer directement le film de l'état local
+      setMovies((prevMovies) => prevMovies.filter(movie => movie.movie.id !== movieId));
   
     } catch (error) {
-      console.error("❌ Erreur lors du marquage comme vu :", error.response?.data || error.message);
+      console.error("❌ Erreur lors du marquage comme vu :", error);
+      console.log("📡 Détails de l'erreur :", error.response?.data);
     }
   };
   
