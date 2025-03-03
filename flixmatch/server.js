@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
+import axios from "axios";
 
 dotenv.config();
 const app = express();
@@ -352,5 +353,34 @@ app.put("/junk/:movieId/restore", authMiddleware, async (req, res) => {
     res.status(500).json({ error: "Erreur serveur" });
   }
 });
+
+app.get("/tmdb/details/:tmdbId/:type", async (req, res) => {
+  const { tmdbId, type } = req.params;
+
+  if (!["movie", "tv"].includes(type)) {
+    return res.status(400).json({ error: "Type invalide, doit être 'movie' ou 'tv'" });
+  }
+
+  try {
+    console.log(`🔍 Fetching details from TMDB: ${type}/${tmdbId}`); // LOG pour voir ce qui est appelé
+
+    const response = await axios.get(
+      `https://api.themoviedb.org/3/${type}/${tmdbId}?language=fr-FR&append_to_response=credits,videos,images,watch/providers`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.TMDB_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    console.log("✅ TMDB API RESPONSE:", response.data); // 🔥 Check ici si TMDB renvoie bien les données
+    res.json(response.data);
+  } catch (error) {
+    console.error("❌ Erreur récupération TMDB :", error?.response?.data || error);
+    res.status(500).json({ error: "Erreur serveur TMDB" });
+  }
+});
+
 
 app.listen(3000, () => console.log("Serveur en marche sur http://localhost:3000"));

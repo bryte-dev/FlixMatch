@@ -29,7 +29,7 @@ model Watchlist {
   userId     Int 
   isFavorite Boolean @default(false)
   status     String  @default("WATCHLIST")
-  rating     Int     @default(0)
+  rating     Int?    
 
   movie Movie @relation(fields: [movieId], references: [id])
   user  User  @relation(fields: [userId], references: [id])

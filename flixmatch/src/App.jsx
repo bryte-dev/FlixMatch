@@ -9,6 +9,7 @@ import Seen from "./pages/Seen";
 import Junk from "./pages/Junk";
 import Register from "./pages/Register";
 import Navbar from "./components/Navbar"; // 🔥 Vérifie que le chemin est bon
+import MovieDetail from "./pages/MovieDetail";
 
 const PrivateRoute = ({ children }) => {
   const { user } = useContext(AuthContext);
@@ -25,6 +26,7 @@ const App = () => {
         <Route path="/" element={<Home />} />
         <Route path="/watchlist" element={<PrivateRoute><Watchlist /></PrivateRoute>} />
         <Route path="/favorites" element={<PrivateRoute><Favorites /></PrivateRoute>} />
+        <Route path="/:type/:tmdbId" element={<MovieDetail />} />
         <Route path="/seen" element={<PrivateRoute><Seen /></PrivateRoute>} />
         <Route path="/junk" element={<PrivateRoute><Junk /></PrivateRoute>} />
       </Routes>

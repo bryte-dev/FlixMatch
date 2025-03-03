@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { Link } from "react-router-dom";
 
 function Favorites() {
   const [movies, setMovies] = useState([]);
@@ -33,6 +34,7 @@ function Favorites() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {movies.map((entry) => (
             <div key={entry.movie.id} className="bg-gray-800 text-white p-4 rounded-lg">
+              <Link to={`/${entry.movie.media_type}/${entry.movie.tmdb_id}`} className="bg-gray-800 text-white p-4 rounded-lg block hover:opacity-75"></Link>
               <img 
                 src={`https://image.tmdb.org/t/p/w500${entry.movie.poster_path}`} 
                 alt={entry.movie.title} 
