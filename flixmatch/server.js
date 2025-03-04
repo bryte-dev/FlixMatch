@@ -106,7 +106,7 @@ app.get("/watchlist", authMiddleware, async (req, res) => {
     console.log("🔍 Récupération de la watchlist pour User ID :", userId);
 
     const watchlist = await prisma.watchlist.findMany({
-      where: { userId },
+      where: { userId, status: { not: "JUNK" } },
       include: { movie: true },
     });
 
@@ -129,8 +129,11 @@ app.post("/watchlist", authMiddleware, async (req, res) => {
   console.log("👤 User ID récupéré :", userId);
 
   try {
-    let movie = await prisma.movie.findUnique({ where: { tmdb_id } });
+    // Vérifie si le film existe déjà dans la base
+    let movie = await prisma.movie.findUnique({ where: { tmdb_id: Number(tmdb_id) } });
 
+
+    // S'il n'existe pas, on l'ajoute
     if (!movie) {
       movie = await prisma.movie.create({
         data: { tmdb_id, title, media_type, poster_path },
@@ -138,6 +141,7 @@ app.post("/watchlist", authMiddleware, async (req, res) => {
       console.log("✅ Film ajouté dans `movie` :", movie);
     }
 
+    // Vérifie si le film est déjà dans la watchlist de l'utilisateur
     const existingEntry = await prisma.watchlist.findFirst({
       where: { movieId: movie.id, userId },
     });
@@ -147,6 +151,7 @@ app.post("/watchlist", authMiddleware, async (req, res) => {
       return res.status(400).json({ error: "Ce film est déjà dans la watchlist" });
     }
 
+    // Ajout du film à la watchlist
     const watchlistEntry = await prisma.watchlist.create({
       data: { movieId: movie.id, userId },
     });
@@ -159,6 +164,7 @@ app.post("/watchlist", authMiddleware, async (req, res) => {
     res.status(500).json({ error: "Erreur serveur", details: error.message });
   }
 });
+
 
 
 // 🔹 Marquer un film comme vu
@@ -354,6 +360,8 @@ app.put("/junk/:movieId/restore", authMiddleware, async (req, res) => {
   }
 });
 
+//Get les details des movies
+
 app.get("/tmdb/details/:tmdbId/:type", async (req, res) => {
   const { tmdbId, type } = req.params;
 
@@ -382,5 +390,33 @@ app.get("/tmdb/details/:tmdbId/:type", async (req, res) => {
   }
 });
 
+// Recommendations (dans movie details)
+
+app.get("/tmdb/recommendations/:tmdbId/:type", async (req, res) => {
+  const { tmdbId, type } = req.params;
+
+  if (!["movie", "tv"].includes(type)) {
+    return res.status(400).json({ error: "Type invalide, doit être 'movie' ou 'tv'" });
+  }
+
+  try {
+    console.log(`🔍 Fetching REAL recommendations for: ${type}/${tmdbId}`);
+
+    const response = await axios.get(
+      `https://api.themoviedb.org/3/${type}/${tmdbId}/recommendations?language=fr-FR`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.TMDB_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    res.json(response.data);
+  } catch (error) {
+    console.error("❌ Erreur récupération recommandations TMDB :", error?.response?.data || error);
+    res.status(500).json({ error: "Erreur serveur TMDB" });
+  }
+});
 
 app.listen(3000, () => console.log("Serveur en marche sur http://localhost:3000"));

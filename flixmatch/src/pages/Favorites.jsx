@@ -26,7 +26,7 @@ function Favorites() {
   }, []);
 
   return (
-    <div className="p-4">
+    <div className="p-4 pt-20">
       <h1 className="text-2xl font-bold mb-4 text-center">⭐ Mes Films Favoris</h1>
       {movies.length === 0 ? (
         <p className="text-center">Aucun film en favori.</p>

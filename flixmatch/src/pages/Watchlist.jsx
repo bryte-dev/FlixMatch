@@ -12,7 +12,7 @@ function Watchlist() {
         console.log("Watchlist récupérée :", res.data);
         
         // Filtrer pour ne garder que ceux qui ne sont PAS "SEEN"
-        const filteredMovies = res.data.filter(movie => movie.status !== "SEEN");
+        const filteredMovies = res.data.filter(movie => movie.status !== "SEEN" && "JUNK");
   
         setMovies(filteredMovies);
       })
@@ -65,7 +65,7 @@ function Watchlist() {
   
 
   return (
-    <div className="p-4">
+    <div className="p-4 pt-20">
       <h1 className="text-2xl font-bold mb-4 text-center">Ma Watchlist</h1>
       {movies.length === 0 ? (
         <p className="text-center">Aucun film dans la watchlist.</p>

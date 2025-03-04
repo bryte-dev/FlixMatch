@@ -20,19 +20,21 @@ model Movie {
   title       String
   media_type  String
   poster_path String
-  watchlist   Watchlist?
+  watchlist   Watchlist[] 
 }
 
 model Watchlist {
   id         Int     @id @default(autoincrement())
-  movieId    Int     @unique
-  userId     Int 
+  movieId    Int  
+  userId     Int  
   isFavorite Boolean @default(false)
   status     String  @default("WATCHLIST")
   rating     Int?    
 
   movie Movie @relation(fields: [movieId], references: [id])
   user  User  @relation(fields: [userId], references: [id])
+
+  @@unique([userId, movieId]) // ✅ Contrainte unique sur les deux
 }
 
 
