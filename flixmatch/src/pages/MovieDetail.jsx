@@ -107,7 +107,7 @@ function MovieDetail() {
 
         {/* 🎥 Infos principales */}
         <div className="md:col-span-2 space-y-4">
-          <h1 className="text-4xl font-bold">{movie.title || movie.name} ({new Date(movie.release_date || movie.first_air_date).getFullYear()})</h1>
+          <h1 className="text-4xl font-bold">{movie.title || movie.name}</h1>
           <p className="text-gray-400 italic">{movie.tagline || "Aucune tagline"}</p>
           <p className="mt-2 text-gray-300">{movie.overview || "Aucun synopsis disponible"}</p>
           
@@ -130,6 +130,10 @@ function MovieDetail() {
               {type === "movie"
                 ? movie.credits?.crew.filter(person => person.job === "Director").map(director => director.name).join(", ") || "Inconnu"
                 : movie.created_by?.map(creator => creator.name).join(", ") || "Inconnu"}
+          </p>
+          <p><strong>
+    📅 Année de sortie : </strong>{new Date(movie.release_date || movie.first_air_date).getFullYear()}
+
           </p>
         </div>
 
