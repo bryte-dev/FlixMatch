@@ -419,4 +419,64 @@ app.get("/tmdb/recommendations/:tmdbId/:type", async (req, res) => {
   }
 });
 
+// 🔎 Route de recherche TMDB
+app.get("/tmdb/search/:query", async (req, res) => {
+  const { query } = req.params;
+
+  try {
+    console.log(`🔍 Recherche de : ${query}`);
+    
+    const response = await axios.get(
+      `https://api.themoviedb.org/3/search/multi?query=${encodeURIComponent(query)}&language=fr-FR`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.TMDB_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    res.json(response.data.results);
+  } catch (error) {
+    console.error("❌ Erreur recherche TMDB :", error?.response?.data || error);
+    res.status(500).json({ error: "Erreur serveur TMDB" });
+  }
+});
+
+// 📌 Charger les genres disponibles
+app.get("/tmdb/genres", async (req, res) => {
+  try {
+    const response = await axios.get("https://api.themoviedb.org/3/genre/movie/list?language=fr-FR", {
+      headers: { Authorization: `Bearer ${process.env.TMDB_API_KEY}` },
+    });
+    res.json(response.data.genres);
+  } catch (error) {
+    console.error("❌ Erreur chargement genres :", error);
+    res.status(500).json({ error: "Erreur serveur TMDB" });
+  }
+});
+
+// 🔎 Recherche avancée
+app.get("/tmdb/advanced-search", async (req, res) => {
+  const { query, genre, year, minRating, maxDuration, page = 1 } = req.query;
+
+  let filters = `language=fr-FR&page=${page}`;
+  if (query) filters += `&query=${encodeURIComponent(query)}`;
+  if (genre) filters += `&with_genres=${genre}`;
+  if (year) filters += `&year=${year}`;
+  if (minRating) filters += `&vote_average.gte=${minRating}`;
+  if (maxDuration) filters += `&with_runtime.lte=${maxDuration}`;
+
+  try {
+    const response = await axios.get(`https://api.themoviedb.org/3/discover/movie?${filters}`, {
+      headers: { Authorization: `Bearer ${process.env.TMDB_API_KEY}` },
+    });
+    res.json(response.data);
+  } catch (error) {
+    console.error("❌ Erreur recherche avancée :", error);
+    res.status(500).json({ error: "Erreur serveur TMDB" });
+  }
+});
+
+
 app.listen(3000, () => console.log("Serveur en marche sur http://localhost:3000"));

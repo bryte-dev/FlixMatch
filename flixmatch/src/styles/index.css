@@ -77,3 +77,23 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+html, body {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: #121212 !important; /* Noir forcé */
+}
+
+#root {
+  min-height: 100vh; /* Assure que l'arrière-plan couvre tout */
+  display: flex;
+  flex-direction: column;
+  background-color: #121212; /* Noir forcé */
+}
+
+main {
+  flex: 1; /* Permet au contenu de s'étendre et pousse le footer en bas */
+  background-color: #121212; /* Noir partout */
+}

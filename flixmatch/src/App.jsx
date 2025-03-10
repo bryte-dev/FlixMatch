@@ -6,9 +6,11 @@ import Login from "./pages/Login";
 import Watchlist from "./pages/Watchlist";
 import Favorites from "./pages/Favorites";
 import Seen from "./pages/Seen";
+import AdvancedSearch from "./pages/AdvancedSearch";
 import Junk from "./pages/Junk";
 import Register from "./pages/Register";
 import Navbar from "./components/Navbar"; // 🔥 Vérifie que le chemin est bon
+import SearchResults from "./components/SearchBar";
 import MovieDetail from "./pages/MovieDetail";
 
 const PrivateRoute = ({ children }) => {
@@ -24,11 +26,14 @@ const App = () => {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/" element={<Home />} />
+        <Route path="/search" element={<SearchResults />} />
+        <Route path="/search/:query" element={<SearchResults />} />
         <Route path="/watchlist" element={<PrivateRoute><Watchlist /></PrivateRoute>} />
         <Route path="/favorites" element={<PrivateRoute><Favorites /></PrivateRoute>} />
         <Route path="/:type/:tmdbId" element={<MovieDetail />} />
         <Route path="/seen" element={<PrivateRoute><Seen /></PrivateRoute>} />
         <Route path="/junk" element={<PrivateRoute><Junk /></PrivateRoute>} />
+        <Route path="/advanced-search" element={<AdvancedSearch />} />
       </Routes>
     </AuthProvider>
   );
