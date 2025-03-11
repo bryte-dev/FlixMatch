@@ -8,10 +8,11 @@ datasource db {
 }
 
 model User {
-  id       Int    @id @default(autoincrement())
-  email    String @unique
+  id       Int       @id @default(autoincrement())
+  email    String    @unique
   password String
   watchlist Watchlist[]
+  reviews  Review[]  // 🔥 Un utilisateur peut écrire plusieurs reviews
 }
 
 model Movie {
@@ -20,13 +21,14 @@ model Movie {
   title       String
   media_type  String
   poster_path String
-  watchlist   Watchlist[] 
+  watchlist   Watchlist[]  // 🔥 Changement en `Watchlist[]` pour autoriser plusieurs entrées
+  reviews     Review[]  // 🔥 Un film peut recevoir plusieurs reviews
 }
 
 model Watchlist {
   id         Int     @id @default(autoincrement())
-  movieId    Int  
-  userId     Int  
+  movieId    Int     
+  userId     Int 
   isFavorite Boolean @default(false)
   status     String  @default("WATCHLIST")
   rating     Int?    
@@ -34,9 +36,28 @@ model Watchlist {
   movie Movie @relation(fields: [movieId], references: [id])
   user  User  @relation(fields: [userId], references: [id])
 
-  @@unique([userId, movieId]) // ✅ Contrainte unique sur les deux
+  @@unique([movieId, userId]) // 🔥 Garantit qu'un film ne peut apparaître qu'une seule fois par utilisateur
 }
 
+model Review {
+  id         Int       @id @default(autoincrement())
+  userId     Int
+  movieId    Int
+  rating     Int       // Note entre 1 et 5
+  comment    String
+  createdAt  DateTime  @default(now())
+
+  // 🔹 Relation avec les utilisateurs
+  user       User      @relation(fields: [userId], references: [id])
+
+  // 🔹 Relation avec les films
+  movie      Movie     @relation(fields: [movieId], references: [id])
+
+  // 🔹 Gestion des réponses aux avis (auto-référence)
+  parentId   Int?      
+  parent     Review?   @relation(name: "ReviewReplies", fields: [parentId], references: [id])
+  replies    Review[]  @relation(name: "ReviewReplies")
+}
 
 enum WatchlistStatus {
   WATCHLIST

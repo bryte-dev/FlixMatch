@@ -12,7 +12,10 @@ function MovieDetail() {
   const [movie, setMovie] = useState(null);
   const [loading, setLoading] = useState(true);
   const [recommendations, setRecommendations] = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [flixmatchRating, setFlixmatchRating] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(false);
   
   useEffect(() => {
     const checkAuth = async () => {
@@ -36,15 +39,21 @@ function MovieDetail() {
 
         const recResponse = await axios.get(`http://localhost:3000/tmdb/recommendations/${tmdbId}/${type}`);
         setRecommendations(recResponse.data.results || []);
+
+        const reviewsResponse = await axios.get(`http://localhost:3000/reviews/${tmdbId}`);
+        setReviews(reviewsResponse.data.reviews);
+        setFlixmatchRating(reviewsResponse.data.averageRating);
       } catch (error) {
         console.error("❌ Erreur récupération des détails du film :", error);
       } finally {
         setLoading(false);
       }
+
+      
     };
 
     if (tmdbId && type) fetchMovieDetails();
-  }, [tmdbId, type]);
+  }, [tmdbId, type, refreshTrigger]);
 
   if (loading) return <div className="text-center text-white p-10">⏳ Chargement...</div>;
   if (!movie) return <div className="text-center text-white p-10">❌ Aucune information disponible</div>;
@@ -114,6 +123,11 @@ function MovieDetail() {
           {/* 📊 Détails */}
           <div className="grid grid-cols-2 gap-4 text-gray-300">
             <p><strong>⭐ IMDb :</strong> {movie.vote_average ? movie.vote_average.toFixed(1) + "/10" : "N/A"}</p>
+            {flixmatchRating !== null ? (
+  <p className="text-yellow-400 text-lg mt-2">⭐ Note FlixMatch : {}/5</p>
+) : (
+  <p className="text-gray-400 text-lg mt-2">⭐ Note FlixMatch : Pas encore de note</p>
+)}
             <p><strong>⏳ Durée :</strong> {movie.runtime ? movie.runtime + " min" : "Variable"}</p>
 
           {/* 🎬 Budget et Recette - UNIQUEMENT pour les films */}

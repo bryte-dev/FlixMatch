@@ -478,5 +478,95 @@ app.get("/tmdb/advanced-search", async (req, res) => {
   }
 });
 
+app.post("/reviews", authMiddleware, async (req, res) => {
+  const { movieId, content, rating, parentId } = req.body;
+  const userId = req.userId;
+
+  if (!content || !rating || rating < 1 || rating > 5) {
+    return res.status(400).json({ error: "Contenu et rating (1-5) requis" });
+  }
+
+  try {
+    const review = await prisma.review.create({
+      data: {
+        content,
+        rating,
+        movieId: Number(movieId),
+        userId,
+        parentId: parentId ? Number(parentId) : null,
+      },
+    });
+
+    // Mettre à jour le rating moyen du film
+    const avgRating = await prisma.review.aggregate({
+      where: { movieId: Number(movieId) },
+      _avg: { rating: true },
+      _count: { rating: true }
+    });
+
+    await prisma.movie.update({
+      where: { id: Number(movieId) },
+      data: {
+        rating: Math.round(avgRating._avg.rating * 10) / 10 || 0,
+        ratingCount: avgRating._count.rating || 0
+      }
+    });
+
+    res.status(201).json({ message: "Avis ajouté", review });
+  } catch (error) {
+    console.error("❌ Erreur ajout review :", error);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+app.get("/reviews/:movieId", async (req, res) => {
+  const { movieId } = req.params;
+
+  try {
+    const reviews = await prisma.review.findMany({
+      where: { movieId: Number(movieId), parentId: null },
+      include: {
+        user: { select: { email: true } },
+        replies: {
+          include: { user: { select: { email: true } } },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    res.json(reviews);
+  } catch (error) {
+    console.error("❌ Erreur récupération avis :", error);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+app.post("/reviews/:movieId", authMiddleware, async (req, res) => {
+  const { movieId } = req.params;
+  const { rating, comment } = req.body;
+  const userId = req.userId;
+
+  if (!rating || rating < 1 || rating > 5) {
+    return res.status(400).json({ error: "La note doit être entre 1 et 5." });
+  }
+
+  try {
+    const review = await prisma.review.create({
+      data: {
+        movieId: Number(movieId),
+        userId,
+        rating: Number(rating),
+        comment,
+      },
+    });
+
+    res.status(201).json({ message: "Avis ajouté avec succès", review });
+  } catch (error) {
+    console.error("❌ Erreur ajout avis :", error);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 
 app.listen(3000, () => console.log("Serveur en marche sur http://localhost:3000"));
