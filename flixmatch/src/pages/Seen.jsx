@@ -4,13 +4,11 @@ import { Link } from "react-router-dom";
 
 function Seen() {
   const [movies, setMovies] = useState([]);
-  const [comment, setComment] = useState("");
-  const [rating, setRating] = useState(3);
-  const [selectedMovie, setSelectedMovie] = useState(null);
   const [refreshTrigger, setRefreshTrigger] = useState(false);
+  const [reviews, setReviews] = useState({});
+  const [ratings, setRatings] = useState({});
 
-  
-  // 🔥 Récupérer la liste des films vus
+  // 🔥 Charger la liste des films vus
   useEffect(() => {
     const fetchSeenMovies = async () => {
       try {
@@ -24,29 +22,39 @@ function Seen() {
     fetchSeenMovies();
   }, [refreshTrigger]);
 
-  // 🔥 Soumettre un avis
-  const submitReview = async (e) => {
-    e.preventDefault();
-    if (!selectedMovie) {
-      alert("Sélectionne un film avant de poster un avis !");
+  // 🔥 Soumettre un avis pour un film spécifique
+  const submitReview = async (movieId) => {
+    if (!reviews[movieId]) {
+      alert("Écris un avis avant de poster !");
       return;
     }
 
     try {
       await axios.post(
-        `http://localhost:3000/reviews/${selectedMovie}`,
-        { rating, comment },
+        `http://localhost:3000/reviews/${movieId}`,
+        { rating: ratings[movieId] || 3, comment: reviews[movieId] },
         { withCredentials: true }
       );
 
       alert("Avis posté !");
-      setComment("");
-      setRating(3);
-      setSelectedMovie(null);
-      setRefreshTrigger((prev) => !prev); // 🔄 Refresh les avis
+      setReviews((prev) => ({ ...prev, [movieId]: "" }));
+      setRatings((prev) => ({ ...prev, [movieId]: 3 }));
+      setRefreshTrigger((prev) => !prev);
     } catch (error) {
       console.error("❌ Erreur lors de l'envoi de l'avis :", error);
       alert("Impossible de poster l'avis !");
+    }
+  };
+
+  // 🔄 Remettre un film en Watchlist
+  const restoreToWatchlist = async (movieId) => {
+    try {
+      await axios.put(`http://localhost:3000/seen/${movieId}/remove`, {}, { withCredentials: true });
+      alert("Film remis dans la Watchlist !");
+      setRefreshTrigger((prev) => !prev);
+    } catch (error) {
+      console.error("❌ Erreur lors du retour en Watchlist :", error);
+      alert("Impossible de remettre ce film en Watchlist.");
     }
   };
 
@@ -70,57 +78,55 @@ function Seen() {
               </Link>
 
               <p className="text-center text-gray-400 mt-2">⭐ Note : {entry.rating || "Non noté"}</p>
+
+              {/* 🔥 Formulaire d'avis */}
+              <div className="mt-4 p-2 bg-gray-700 rounded-lg">
+                <h3 className="text-md font-semibold text-center mb-2">📝 Donne ton avis</h3>
+
+                {/* ⭐ Sélection des étoiles (effet visuel) */}
+                <div className="flex justify-center space-x-1 mb-2">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      className={`text-2xl ${
+                        star <= (ratings[entry.movie.id] || 3) ? "text-yellow-400" : "text-gray-500"
+                      } transition-transform transform hover:scale-110`}
+                      onClick={() => setRatings((prev) => ({ ...prev, [entry.movie.id]: star }))}
+                    >
+                      {star <= (ratings[entry.movie.id] || 3) ? "★" : "☆"}
+                    </button>
+                  ))}
+                </div>
+
+                {/* 📝 Zone de texte pour l'avis */}
+                <textarea
+                  value={reviews[entry.movie.id] || ""}
+                  onChange={(e) =>
+                    setReviews((prev) => ({ ...prev, [entry.movie.id]: e.target.value }))
+                  }
+                  className="w-full p-2 rounded bg-gray-600 text-white"
+                  rows="2"
+                  placeholder="Écris ton avis ici..."
+                />
+
+                {/* 🚀 Bouton d'envoi */}
+                <button
+                  onClick={() => submitReview(entry.movie.id)}
+                  className="mt-2 bg-blue-500 hover:bg-blue-700 text-black px-4 py-2 rounded-lg w-full"
+                >
+                  Poster l'avis 🚀
+                </button>
+              </div>
+
+              {/* 🔄 Bouton pour remettre en Watchlist */}
+              <button
+                onClick={() => restoreToWatchlist(entry.movie.id)}
+                className="mt-2 bg-yellow-500 hover:bg-yellow-700 text-black px-4 py-2 rounded-lg w-full"
+              >
+                🔄 Remettre en Watchlist
+              </button>
             </div>
           ))}
-        </div>
-      )}
-
-      {/* 🌟 Formulaire d'Avis */}
-      {movies.length > 0 && (
-        <div className="mt-8 p-4 bg-gray-800 rounded-lg">
-          <h2 className="text-xl font-semibold text-center mb-4">📝 Laisser un avis</h2>
-
-          <form onSubmit={submitReview} className="space-y-4">
-            {/* Sélection du film */}
-            <select
-              className="w-full p-2 rounded bg-gray-700 text-white"
-              value={selectedMovie || ""}
-              onChange={(e) => setSelectedMovie(e.target.value)}
-            >
-              <option value="">Sélectionne un film</option>
-              {movies.map((entry) => (
-                <option key={entry.movie.id} value={entry.movie.id}>
-                  {entry.movie.title}
-                </option>
-              ))}
-            </select>
-
-            {/* Note */}
-            <label className="block text-white">⭐ Note (1-5) :</label>
-            <input
-              type="number"
-              min="1"
-              max="5"
-              value={rating}
-              onChange={(e) => setRating(e.target.value)}
-              className="w-full p-2 rounded bg-gray-700 text-white"
-            />
-
-            {/* Commentaire */}
-            <label className="block text-white">💬 Commentaire :</label>
-            <textarea
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              className="w-full p-2 rounded bg-gray-700 text-white"
-              rows="4"
-              placeholder="Écris ton avis ici..."
-            />
-
-            {/* Bouton d'envoi */}
-            <button type="submit" className="w-full bg-blue-500 hover:bg-blue-700 text-black px-4 py-2 rounded-lg">
-              Envoyer l'avis 🚀
-            </button>
-          </form>
         </div>
       )}
     </div>

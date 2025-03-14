@@ -370,8 +370,9 @@ app.get("/tmdb/details/:tmdbId/:type", async (req, res) => {
   }
 
   try {
-    console.log(`🔍 Fetching details from TMDB: ${type}/${tmdbId}`); // LOG pour voir ce qui est appelé
+    console.log(`🔍 Fetching details from TMDB: ${type}/${tmdbId}`);
 
+    // 🔥 Récupérer les détails du film depuis TMDB
     const response = await axios.get(
       `https://api.themoviedb.org/3/${type}/${tmdbId}?language=fr-FR&append_to_response=credits,videos,images,watch/providers`,
       {
@@ -382,8 +383,31 @@ app.get("/tmdb/details/:tmdbId/:type", async (req, res) => {
       }
     );
 
-    console.log("✅ TMDB API RESPONSE:", response.data); // 🔥 Check ici si TMDB renvoie bien les données
-    res.json(response.data);
+    const movieDetails = response.data;
+
+    // 🔥 Vérifier si le film existe dans la DB locale
+    let movie = await prisma.movie.findUnique({
+      where: { tmdb_id: Number(tmdbId) },
+      include: {
+        reviews: {
+          include: { user: true }, // Inclure les auteurs des reviews
+        },
+      },
+    });
+
+    // 🔥 Si le film existe en local, calculer la moyenne des ratings
+    let averageRating = null;
+    if (movie && movie.reviews.length > 0) {
+      const totalRatings = movie.reviews.reduce((sum, review) => sum + review.rating, 0);
+      averageRating = (totalRatings / movie.reviews.length).toFixed(1);
+    }
+
+    res.json({
+      ...movieDetails,
+      flixmatchRating: averageRating, // 🔥 Ajoute la note moyenne locale
+      reviews: movie ? movie.reviews : [],
+    });
+
   } catch (error) {
     console.error("❌ Erreur récupération TMDB :", error?.response?.data || error);
     res.status(500).json({ error: "Erreur serveur TMDB" });
@@ -519,26 +543,25 @@ app.post("/reviews", authMiddleware, async (req, res) => {
   }
 });
 
-app.get("/reviews/:movieId", async (req, res) => {
-  const { movieId } = req.params;
+app.get("/reviews/:tmdbId", async (req, res) => {
+  const { tmdbId } = req.params;
 
   try {
     const reviews = await prisma.review.findMany({
-      where: { movieId: Number(movieId), parentId: null },
-      include: {
-        user: { select: { email: true } },
-        replies: {
-          include: { user: { select: { email: true } } },
-          orderBy: { createdAt: "asc" },
-        },
-      },
-      orderBy: { createdAt: "desc" },
+      where: { movie: { tmdb_id: Number(tmdbId) } }, 
+      include: { user: true },
     });
 
-    res.json(reviews);
+    // Calculer la moyenne des notes
+    const avgRating =
+      reviews.length > 0
+        ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+        : null;
+
+    res.json({ reviews, avgRating });
   } catch (error) {
     console.error("❌ Erreur récupération avis :", error);
-    res.status(500).json({ error: "Erreur serveur" });
+    res.status(500).json({ error: "Erreur serveur lors de la récupération des avis" });
   }
 });
 

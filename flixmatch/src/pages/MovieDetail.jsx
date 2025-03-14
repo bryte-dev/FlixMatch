@@ -13,7 +13,7 @@ function MovieDetail() {
   const [loading, setLoading] = useState(true);
   const [recommendations, setRecommendations] = useState([]);
   const [reviews, setReviews] = useState([]);
-  const [flixmatchRating, setFlixmatchRating] = useState(null);
+  const [averageRating, setAverageRating] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(false);
   
@@ -40,9 +40,7 @@ function MovieDetail() {
         const recResponse = await axios.get(`http://localhost:3000/tmdb/recommendations/${tmdbId}/${type}`);
         setRecommendations(recResponse.data.results || []);
 
-        const reviewsResponse = await axios.get(`http://localhost:3000/reviews/${tmdbId}`);
-        setReviews(reviewsResponse.data.reviews);
-        setFlixmatchRating(reviewsResponse.data.averageRating);
+      
       } catch (error) {
         console.error("❌ Erreur récupération des détails du film :", error);
       } finally {
@@ -54,6 +52,21 @@ function MovieDetail() {
 
     if (tmdbId && type) fetchMovieDetails();
   }, [tmdbId, type, refreshTrigger]);
+
+  useEffect(() => {
+    const fetchReviews = async () => {
+      try {
+        const res = await axios.get(`http://localhost:3000/reviews/${tmdbId}`);
+        console.log("✅ Avis récupérés :", res.data); // 🔍 Debug
+        setReviews(res.data.reviews);
+        setAverageRating(res.data.averageRating);
+      } catch (error) {
+        console.error("❌ Erreur récupération avis :", error);
+      }
+    };
+  
+    fetchReviews();
+  }, [tmdbId]);
 
   if (loading) return <div className="text-center text-white p-10">⏳ Chargement...</div>;
   if (!movie) return <div className="text-center text-white p-10">❌ Aucune information disponible</div>;
@@ -123,11 +136,11 @@ function MovieDetail() {
           {/* 📊 Détails */}
           <div className="grid grid-cols-2 gap-4 text-gray-300">
             <p><strong>⭐ IMDb :</strong> {movie.vote_average ? movie.vote_average.toFixed(1) + "/10" : "N/A"}</p>
-            {flixmatchRating !== null ? (
-  <p className="text-yellow-400 text-lg mt-2">⭐ Note FlixMatch : {}/5</p>
-) : (
-  <p className="text-gray-400 text-lg mt-2">⭐ Note FlixMatch : Pas encore de note</p>
-)}
+            {movie.flixmatchRating && (
+              <p className="mt-2 text-lg font-semibold">
+                ⭐ Note FlixMatch : {movie.flixmatchRating}/5 ({movie.reviews.length} avis)
+              </p>
+            )}
             <p><strong>⏳ Durée :</strong> {movie.runtime ? movie.runtime + " min" : "Variable"}</p>
 
           {/* 🎬 Budget et Recette - UNIQUEMENT pour les films */}
@@ -284,6 +297,72 @@ function MovieDetail() {
     </Swiper>
   </div>
 )}
+{/* 📝 Section des Avis */}
+{movie.reviews.length > 0 ? (
+  <div className="mt-6">
+    <h2 className="text-xl font-semibold">📝 Avis des utilisateurs :</h2>
+    <div className="mt-3 space-y-4">
+      {movie.reviews.map((review) => (
+        <div key={review.id} className="bg-gray-800 p-4 rounded-lg">
+          <p className="text-sm text-gray-300">
+            <strong>{review.user.email}</strong> - ⭐ {review.rating}/5
+          </p>
+          <p className="mt-1">{review.comment}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+) : (
+  <p className="mt-6 text-gray-400">Aucun avis pour l'instant.</p>
+)}
+ <div className="mt-6">
+          <h2 className="text-xl font-semibold">📝 Avis des utilisateurs :</h2>
+          <div className="mt-3 space-y-4">
+            {reviews.count > 0 ? (
+              reviews.map((review) => (
+                <div key={review.id} className="bg-gray-800 p-4 rounded-lg">
+                  <p className="text-sm text-gray-300">
+                    <strong>{review.user.email}</strong> - ⭐ {review.rating}/5
+                  </p>
+                  <p className="mt-1">{review.comment}</p>
+
+                  {/* 🔄 Affichage des réponses aux avis */}
+                  {review.replies.length > 0 && (
+                    <div className="mt-3 bg-gray-700 p-3 rounded-lg">
+                      <h3 className="text-sm font-semibold">💬 Réponses :</h3>
+                      {review.replies.map((reply) => (
+                        <p key={reply.id} className="text-gray-300 mt-1 text-sm">
+                          <strong>{reply.user.email}</strong> : {reply.comment}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 📩 Formulaire de réponse */}
+                  {isAuthenticated && (
+                    <div className="mt-3">
+                      <textarea
+                        value={replyInputs[review.id] || ""}
+                        onChange={(e) => setReplyInputs((prev) => ({ ...prev, [review.id]: e.target.value }))}
+                        className="w-full p-2 rounded bg-gray-600 text-white"
+                        rows="2"
+                        placeholder="Répondre à cet avis..."
+                      />
+                      <button
+                        onClick={() => submitReply(review.id)}
+                        className="mt-2 bg-blue-500 hover:bg-blue-700 text-black px-4 py-2 rounded-lg w-full"
+                      >
+                        Envoyer la réponse 🚀
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))
+            ) : (
+              <p className="mt-6 text-gray-400">Aucun avis pour l'instant.</p>
+            )}
+          </div>
+        </div>
 
       {/* 🔙 Bouton retour */}
       <div className="mt-10 max-w-5xl mx-auto text-center">
