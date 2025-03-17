@@ -16,6 +16,11 @@ function MovieDetail() {
   const [averageRating, setAverageRating] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(false);
+  const [newRating, setNewRating] = useState(3);
+const [newComment, setNewComment] = useState("");
+const [showReplyInput, setShowReplyInput] = useState({});
+const [replyInputs, setReplyInputs] = useState({});
+
   
   useEffect(() => {
     const checkAuth = async () => {
@@ -57,16 +62,22 @@ function MovieDetail() {
     const fetchReviews = async () => {
       try {
         const res = await axios.get(`http://localhost:3000/reviews/${tmdbId}`);
-        console.log("✅ Avis récupérés :", res.data); // 🔍 Debug
-        setReviews(res.data.reviews);
-        setAverageRating(res.data.averageRating);
+        console.log("✅ Avis récupérés :", res.data); // Debug
+  
+        if (res.data && Array.isArray(res.data.reviews)) {
+          setReviews(res.data.reviews); // 🛠️ On met reviews.reviews !
+          setAverageRating(res.data.avgRating);
+        } else {
+          console.error("❌ Erreur : reviews n'est pas un tableau :", res.data);
+        }
       } catch (error) {
         console.error("❌ Erreur récupération avis :", error);
       }
     };
   
     fetchReviews();
-  }, [tmdbId]);
+  }, [tmdbId, refreshTrigger]);
+  
 
   if (loading) return <div className="text-center text-white p-10">⏳ Chargement...</div>;
   if (!movie) return <div className="text-center text-white p-10">❌ Aucune information disponible</div>;
@@ -102,7 +113,48 @@ function MovieDetail() {
     }
   };
   
+// 🔥 Poster un avis
+const submitReview = async (e) => {
+  e.preventDefault();
+  try {
+    await axios.post(
+      `http://localhost:3000/reviews`,
+      { movieId: movie.id, rating: newRating, content: newComment},
+      { withCredentials: true }
+    );
 
+    alert("Avis posté !");
+    setNewRating(3);
+    setNewComment("");
+    setRefreshTrigger((prev) => !prev); // 🔄 Refresh les avis
+  } catch (error) {
+    console.error("❌ Erreur lors de l'envoi de l'avis :", error);
+    alert("Impossible de poster l'avis !");
+  }
+};
+
+// 🔥 Poster une réponse
+const submitReply = async (parentReviewId) => {
+  if (!replyInputs[parentReviewId]) {
+    alert("Écris une réponse avant de poster !");
+    return;
+  }
+
+  try {
+    await axios.post(
+      `http://localhost:3000/reviews`,
+      { movieId: movie.id, content: replyInputs[parentReviewId], parentId: parentReviewId },
+      { withCredentials: true }
+    );
+
+    alert("Réponse postée !");
+    setReplyInputs((prev) => ({ ...prev, [parentReviewId]: "" }));
+    setRefreshTrigger((prev) => !prev); // 🔄 Refresh les avis
+  } catch (error) {
+    console.error("❌ Erreur lors de l'envoi de la réponse :", error);
+    alert("Impossible de poster la réponse !");
+  }
+};
 
   return (
     <div className="bg-gray-900 text-white min-h-screen p-6 pt-20">
@@ -298,71 +350,100 @@ function MovieDetail() {
   </div>
 )}
 {/* 📝 Section des Avis */}
-{movie.reviews.length > 0 ? (
-  <div className="mt-6">
-    <h2 className="text-xl font-semibold">📝 Avis des utilisateurs :</h2>
-    <div className="mt-3 space-y-4">
-      {movie.reviews.map((review) => (
-        <div key={review.id} className="bg-gray-800 p-4 rounded-lg">
-          <p className="text-sm text-gray-300">
-            <strong>{review.user.email}</strong> - ⭐ {review.rating}/5
-          </p>
-          <p className="mt-1">{review.comment}</p>
+<div className="mt-6">
+  <h2 className="text-xl font-semibold">📝 Avis des utilisateurs :</h2>
+  <div className="mt-3 space-y-4">
+  {reviews.length > 0 ? (
+  reviews.map((review) => (
+    <div key={review.id} className="bg-gray-800 p-4 rounded-lg">
+      <p className="text-sm text-gray-300">
+        <strong>{review.user?.email || "Utilisateur inconnu"}</strong> - ⭐ {review.rating}/5
+      </p>
+      <p className="mt-1">{review.comment}</p>
+
+      {/* 🔄 Affichage des réponses */}
+      {review.replies && review.replies.length > 0 && (
+        <div className="mt-3 bg-gray-700 p-3 rounded-lg">
+          <h3 className="text-sm font-semibold">💬 Réponses :</h3>
+          {review.replies.map((reply) => (
+            <p key={reply.id} className="text-gray-300 mt-1 text-sm">
+              <strong>{reply.user?.email || "Utilisateur inconnu"}</strong> : {reply.comment}
+            </p>
+          ))}
         </div>
-      ))}
+      )}
+
+      {/* 📩 Bouton pour afficher le formulaire de réponse */}
+      {isAuthenticated && (
+        <div className="mt-3">
+          <button
+            onClick={() => setShowReplyInput((prev) => ({ ...prev, [review.id]: !prev[review.id] }))}
+            className="bg-gray-600 text-white px-3 py-1 rounded"
+          >
+            {showReplyInput[review.id] ? "Annuler" : "Répondre"}
+          </button>
+
+          {showReplyInput[review.id] && (
+            <div className="mt-2">
+              <textarea
+                value={replyInputs[review.id] || ""}
+                onChange={(e) => setReplyInputs((prev) => ({ ...prev, [review.id]: e.target.value }))}
+                className="w-full p-2 rounded bg-gray-600 text-white"
+                rows="2"
+                placeholder="Répondre à cet avis..."
+              />
+              <button
+                onClick={() => submitReply(review.id)}
+                className="mt-2 bg-blue-500 hover:bg-blue-700 text-black px-4 py-2 rounded-lg w-full"
+              >
+                Envoyer la réponse 🚀
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
-  </div>
+  ))
 ) : (
   <p className="mt-6 text-gray-400">Aucun avis pour l'instant.</p>
 )}
- <div className="mt-6">
-          <h2 className="text-xl font-semibold">📝 Avis des utilisateurs :</h2>
-          <div className="mt-3 space-y-4">
-            {reviews.count > 0 ? (
-              reviews.map((review) => (
-                <div key={review.id} className="bg-gray-800 p-4 rounded-lg">
-                  <p className="text-sm text-gray-300">
-                    <strong>{review.user.email}</strong> - ⭐ {review.rating}/5
-                  </p>
-                  <p className="mt-1">{review.comment}</p>
+  </div>
+</div>
 
-                  {/* 🔄 Affichage des réponses aux avis */}
-                  {review.replies.length > 0 && (
-                    <div className="mt-3 bg-gray-700 p-3 rounded-lg">
-                      <h3 className="text-sm font-semibold">💬 Réponses :</h3>
-                      {review.replies.map((reply) => (
-                        <p key={reply.id} className="text-gray-300 mt-1 text-sm">
-                          <strong>{reply.user.email}</strong> : {reply.comment}
-                        </p>
-                      ))}
-                    </div>
-                  )}
+{isAuthenticated && (
+  <div className="mt-8 p-4 bg-gray-800 rounded-lg">
+    <h2 className="text-xl font-semibold text-center mb-4">📝 Laisser un avis</h2>
 
-                  {/* 📩 Formulaire de réponse */}
-                  {isAuthenticated && (
-                    <div className="mt-3">
-                      <textarea
-                        value={replyInputs[review.id] || ""}
-                        onChange={(e) => setReplyInputs((prev) => ({ ...prev, [review.id]: e.target.value }))}
-                        className="w-full p-2 rounded bg-gray-600 text-white"
-                        rows="2"
-                        placeholder="Répondre à cet avis..."
-                      />
-                      <button
-                        onClick={() => submitReply(review.id)}
-                        className="mt-2 bg-blue-500 hover:bg-blue-700 text-black px-4 py-2 rounded-lg w-full"
-                      >
-                        Envoyer la réponse 🚀
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))
-            ) : (
-              <p className="mt-6 text-gray-400">Aucun avis pour l'instant.</p>
-            )}
-          </div>
-        </div>
+    <form onSubmit={submitReview} className="space-y-4">
+      {/* Note */}
+      <label className="block text-white">⭐ Note (1-5) :</label>
+      <input
+        type="number"
+        min="1"
+        max="5"
+        value={newRating}
+        onChange={(e) => setNewRating(e.target.value)}
+        className="w-full p-2 rounded bg-gray-700 text-white"
+      />
+
+      {/* Commentaire */}
+      <label className="block text-white">💬 Commentaire :</label>
+      <textarea
+        value={newComment}
+        onChange={(e) => setNewComment(e.target.value)}
+        className="w-full p-2 rounded bg-gray-700 text-white"
+        rows="4"
+        placeholder="Écris ton avis ici..."
+      />
+
+      {/* Bouton d’envoi */}
+      <button type="submit" className="w-full bg-blue-500 hover:bg-blue-700 text-black px-4 py-2 rounded-lg">
+        Envoyer l'avis 🚀
+      </button>
+    </form>
+  </div>
+)}
+
 
       {/* 🔙 Bouton retour */}
       <div className="mt-10 max-w-5xl mx-auto text-center">
