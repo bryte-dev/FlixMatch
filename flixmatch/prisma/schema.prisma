@@ -10,6 +10,7 @@ datasource db {
 model User {
   id       Int       @id @default(autoincrement())
   email    String    @unique
+  username String?   // Nouveau champ username optionnel
   password String
   watchlist Watchlist[]
   reviews  Review[]  // 🔥 Un utilisateur peut écrire plusieurs reviews
@@ -43,17 +44,13 @@ model Review {
   id         Int       @id @default(autoincrement())
   userId     Int
   movieId    Int
-  rating     Int       // Note entre 1 et 5
+  rating     Int?      // ⬅️ ✅ Rend le rating optionnel
   comment    String
   createdAt  DateTime  @default(now())
 
-  // 🔹 Relation avec les utilisateurs
   user       User      @relation(fields: [userId], references: [id])
-
-  // 🔹 Relation avec les films
   movie      Movie     @relation(fields: [movieId], references: [id])
 
-  // 🔹 Gestion des réponses aux avis (auto-référence)
   parentId   Int?      
   parent     Review?   @relation(name: "ReviewReplies", fields: [parentId], references: [id])
   replies    Review[]  @relation(name: "ReviewReplies")

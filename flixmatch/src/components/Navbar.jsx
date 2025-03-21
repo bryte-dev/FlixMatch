@@ -81,6 +81,7 @@ const Navbar = () => {
             <Link to="/seen" className="hover:text-blue-400 transition">👁️ Vus</Link>
             <Link to="/junk" className="hover:text-blue-400 transition">🗑️ Corbeille</Link>
             <Link to="/advanced-search" className="hover:text-blue-400 transition">🔎 Recherche Avancée</Link>
+            <Link to="/account" className="hover:text-blue-400 transition">👤 Mon Profil</Link>
 
           </>
         )}

@@ -503,38 +503,46 @@ app.get("/tmdb/advanced-search", async (req, res) => {
 });
 
 app.post("/reviews", authMiddleware, async (req, res) => {
-  const { movieId, content, rating, parentId } = req.body;
+  const { movieId, comment, rating, parentId } = req.body;
   const userId = req.userId;
 
-  if (!content || !rating || rating < 1 || rating > 5) {
-    return res.status(400).json({ error: "Contenu et rating (1-5) requis" });
+  console.log("📩 Requête reçue pour une review :", { movieId, comment, rating, parentId, userId });
+
+  if (!comment) {
+    return res.status(400).json({ error: "Le commentaire est requis" });
+  }
+
+  if (!userId) {
+    return res.status(401).json({ error: "Utilisateur non authentifié" });
   }
 
   try {
-    const review = await prisma.review.create({
-      data: {
-        content,
-        rating,
-        movieId: Number(movieId),
-        userId,
-        parentId: parentId ? Number(parentId) : null,
-      },
-    });
+    const reviewData = {
+      comment,
+      user: { connect: { id: userId } },
+      movie: { connect: { tmdb_id: Number(movieId) } },
+      parent: parentId ? { connect: { id: parentId } } : undefined,
+      rating: parentId ? null : Number(rating), // ⬅️ ✅ Ne met PAS de rating si c'est une réponse
+    };
 
-    // Mettre à jour le rating moyen du film
-    const avgRating = await prisma.review.aggregate({
-      where: { movieId: Number(movieId) },
-      _avg: { rating: true },
-      _count: { rating: true }
-    });
+    const review = await prisma.review.create({ data: reviewData });
 
-    await prisma.movie.update({
-      where: { id: Number(movieId) },
-      data: {
-        rating: Math.round(avgRating._avg.rating * 10) / 10 || 0,
-        ratingCount: avgRating._count.rating || 0
-      }
-    });
+    // 🔥 Mettre à jour la moyenne des notes SEULEMENT pour les avis principaux
+    if (!parentId) {
+      const avgRating = await prisma.review.aggregate({
+        where: { movieId: Number(movieId), parentId: null }, // On exclut les réponses
+        _avg: { rating: true },
+        _count: { rating: true },
+      });
+
+      await prisma.movie.update({
+        where: { tmdb_id: Number(movieId) },
+        data: {
+          rating: Math.round(avgRating._avg.rating * 10) / 10 || 0,
+          ratingCount: avgRating._count.rating || 0,
+        },
+      });
+    }
 
     res.status(201).json({ message: "Avis ajouté", review });
   } catch (error) {
@@ -542,6 +550,7 @@ app.post("/reviews", authMiddleware, async (req, res) => {
     res.status(500).json({ error: "Erreur serveur" });
   }
 });
+
 
 app.get("/reviews/:tmdbId", async (req, res) => {
   const { tmdbId } = req.params;
@@ -590,6 +599,40 @@ app.post("/reviews/:movieId", authMiddleware, async (req, res) => {
     res.status(500).json({ error: "Erreur serveur" });
   }
 });
+
+app.get("/reviews/:reviewId/replies", async (req, res) => {
+  const { reviewId } = req.params;
+  const { cursor, limit = 3 } = req.query; // `cursor` = dernière réponse chargée
+
+  try {
+    const replies = await prisma.review.findMany({
+      where: { parentId: Number(reviewId) },
+      include: {
+        user: true,
+        replies: {
+          include: {
+            user: true,
+          },
+          orderBy: { createdAt: "asc" },
+          take: Number(limit),
+        },
+      },
+      take: Number(limit) + 1, // On prend +1 pour voir s'il y a encore des réponses après
+      ...(cursor ? { skip: 1, cursor: { id: Number(cursor) } } : {}), // Skip le premier si cursor
+      orderBy: { createdAt: "asc" }, // Afficher du plus ancien au plus récent
+    });
+
+    const hasMore = replies.length > limit; // Vérifier s'il reste d'autres réponses
+    if (hasMore) replies.pop(); // On enlève la réponse en trop
+
+    res.json({ replies, hasMore, nextCursor: hasMore ? replies[replies.length - 1].id : null });
+  } catch (error) {
+    console.error("❌ Erreur récupération des réponses :", error);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+
 
 
 app.listen(3000, () => console.log("Serveur en marche sur http://localhost:3000"));

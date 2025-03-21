@@ -1,6 +1,19 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
+import { 
+  TextField, 
+  Box, 
+  List, 
+  ListItem, 
+  ListItemText, 
+  ListItemAvatar, 
+  Avatar, 
+  Typography,
+  Paper
+} from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
+import InputAdornment from '@mui/material/InputAdornment';
 
 function SearchBar() {
   const [query, setQuery] = useState("");
@@ -24,29 +37,106 @@ function SearchBar() {
     }
   }, [query]);
 
+  // Fonction pour ouvrir une recherche Google pour un acteur
+  const handleActorSearch = (event, name) => {
+    event.preventDefault();
+    event.stopPropagation();
+    window.open(`https://www.google.com/search?q=${encodeURIComponent(name)}`, '_blank');
+  };
+
   return (
-    <div className="relative">
-      <input
-        type="text"
-        placeholder="Rechercher un film, une série..."
-        className="p-2 w-64 text-black rounded-lg focus:outline-none"
+    <Box sx={{ position: 'relative', width: 300 }}>
+      <TextField
+        fullWidth
+        placeholder="Rechercher un film, une série, un acteur..."
         value={query}
         onChange={(e) => setQuery(e.target.value)}
+        variant="outlined"
+        size="small"
+        sx={{
+          '& .MuiOutlinedInput-root': {
+            backgroundColor: 'background.paper',
+            borderRadius: 2,
+          }
+        }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon />
+            </InputAdornment>
+          ),
+        }}
       />
       {showResults && (
-        <div className="absolute top-10 left-0 bg-gray-800 w-64 rounded-lg shadow-lg">
-          {results.map((item) => (
-            <Link
-              key={item.id}
-              to={`/${item.media_type}/${item.id}`}
-              className="block p-2 hover:bg-gray-700"
-            >
-              {item.title || item.name}
-            </Link>
-          ))}
-        </div>
+        <Paper 
+          elevation={3} 
+          sx={{ 
+            position: 'absolute', 
+            top: '100%', 
+            left: 0, 
+            width: '100%', 
+            zIndex: 1000,
+            mt: 0.5,
+            maxHeight: 400,
+            overflow: 'auto',
+            borderRadius: 2
+          }}
+        >
+          <List sx={{ p: 0 }}>
+            {results.map((item) => (
+              <ListItem 
+                key={item.id} 
+                component={Link}
+                to={`/${item.media_type}/${item.id}`}
+                sx={{ 
+                  '&:hover': { 
+                    backgroundColor: 'action.hover' 
+                  },
+                  textDecoration: 'none',
+                  color: 'text.primary'
+                }}
+                divider
+              >
+                <ListItemAvatar>
+                  <Avatar 
+                    src={
+                      item.poster_path || item.profile_path 
+                        ? `https://image.tmdb.org/t/p/w92${item.poster_path || item.profile_path}` 
+                        : item.media_type === 'person' 
+                          ? '/default-actor.png' 
+                          : '/default-movie.png'
+                    }
+                    alt={item.title || item.name}
+                    variant={item.media_type === 'person' ? 'circular' : 'rounded'}
+                  />
+                </ListItemAvatar>
+                <ListItemText 
+                  primary={item.title || item.name}
+                  secondary={
+                    item.media_type === 'person' ? (
+                      <Typography 
+                        component="span" 
+                        variant="body2" 
+                        color="primary"
+                        onClick={(e) => handleActorSearch(e, item.name)}
+                        sx={{ 
+                          cursor: 'pointer',
+                          '&:hover': { textDecoration: 'underline' }
+                        }}
+                      >
+                        Rechercher sur Google
+                      </Typography>
+                    ) : (
+                      item.media_type === 'movie' ? 'Film' : 'Série TV'
+                    )
+                  }
+                />
+              </ListItem>
+            ))}
+          </List>
+        </Paper>
       )}
-    </div>
+    </Box>
   );
 }
 
