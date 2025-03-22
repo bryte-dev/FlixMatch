@@ -40,7 +40,7 @@ const authMiddleware = (req, res, next) => {
 
 // 🔹 Inscription
 app.post("/register", async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, username } = req.body;
 
   if (!email || !password) {
     return res.status(400).json({ error: "Email et mot de passe requis" });
@@ -50,12 +50,12 @@ app.post("/register", async (req, res) => {
 
   try {
     const user = await prisma.user.create({
-      data: { email, password: hashedPassword },
+      data: { email, username, password: hashedPassword },
     });
 
     res.status(201).json({ message: "Utilisateur créé", userId: user.id });
   } catch (error) {
-    res.status(500).json({ error: "Erreur lors de l'inscription" });
+    res.status(500).json({ error: "Erreur lors de l'inscription", details: error.message });
   }
 });
 
