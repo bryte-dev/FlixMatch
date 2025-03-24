@@ -73,12 +73,13 @@ function Watchlist() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {movies.map((entry) => (
             <div key={entry.movie.id} className="bg-gray-800 text-white p-4 rounded-lg">
-              <Link to={`/${entry.movie.media_type}/${entry.movie.tmdb_id}`} className="bg-gray-800 text-white p-4 rounded-lg block hover:opacity-75"></Link>
-              <img 
-                src={`https://image.tmdb.org/t/p/w500${entry.movie.poster_path}`} 
-                alt={entry.movie.title} 
-                className="rounded-lg w-full"
-              />
+                            <Link to={`/${entry.movie.media_type}/${entry.movie.tmdb_id}`} className="block hover:opacity-75">
+                <img
+                  src={`https://image.tmdb.org/t/p/w500${entry.movie.poster_path}`}
+                  alt={entry.movie.title}
+                  className="rounded-lg w-full"
+                />
+              </Link>
               <h2 className="text-lg font-bold mt-2 text-center">{entry.movie.title}</h2>
 
               {/* Bouton étoile pour favoris */}

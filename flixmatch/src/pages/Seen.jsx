@@ -81,7 +81,7 @@ function Seen() {
 
               {/* 🔥 Formulaire d'avis */}
               <div className="mt-4 p-2 bg-gray-700 rounded-lg">
-                <h3 className="text-md font-semibold text-center mb-2">📝 Donne ton avis</h3>
+                <h3 className="text-md font-semibold text-center mb-2">Donne ton avis</h3>
 
                 {/* ⭐ Sélection des étoiles (effet visuel) */}
                 <div className="flex justify-center space-x-1 mb-2">
@@ -114,7 +114,7 @@ function Seen() {
                   onClick={() => submitReview(entry.movie.id)}
                   className="mt-2 bg-blue-500 hover:bg-blue-700 text-black px-4 py-2 rounded-lg w-full"
                 >
-                  Poster l'avis 🚀
+                  Poster l'avis
                 </button>
               </div>
 
@@ -123,7 +123,7 @@ function Seen() {
                 onClick={() => restoreToWatchlist(entry.movie.id)}
                 className="mt-2 bg-yellow-500 hover:bg-yellow-700 text-black px-4 py-2 rounded-lg w-full"
               >
-                🔄 Remettre en Watchlist
+                Remettre en Watchlist
               </button>
             </div>
           ))}

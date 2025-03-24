@@ -16,14 +16,16 @@ import {
 } from '@mui/material';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import SaveIcon from '@mui/icons-material/Save';
+import LogoutIcon from '@mui/icons-material/Logout';
 
 const Account = () => {
-  const { user } = useContext(AuthContext);
+  const { user, logout } = useContext(AuthContext); // 🔥 Ajout de setUser pour gérer la déconnexion
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false); // 🔥 Pour gérer l'état du bouton de déconnexion
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
@@ -84,6 +86,11 @@ const Account = () => {
     }
   };
 
+  const handleLogout = () => {
+    logout();
+    navigate("/");
+  };
+
   const handleCloseSnackbar = () => {
     setSnackbar({ ...snackbar, open: false });
   };
@@ -137,11 +144,25 @@ const Account = () => {
             color="primary"
             disabled={saving}
             startIcon={saving ? <CircularProgress size={24} /> : <SaveIcon />}
-            sx={{ py: 1.5 }}
+            sx={{ py: 1.5, mb: 2 }} // 🔥 Ajout d'un margin-bottom
           >
             {saving ? "Enregistrement..." : "Enregistrer les modifications"}
           </Button>
         </form>
+
+        {/* 🔥 Bouton de déconnexion */}
+        <Button
+          onClick={handleLogout}
+          fullWidth
+          variant="contained"
+          color="error"
+          disabled={loggingOut}
+          startIcon={loggingOut ? <CircularProgress size={24} /> : <LogoutIcon />}
+          sx={{ py: 1.5 }}
+        >
+          {loggingOut ? "Déconnexion..." : "Se déconnecter"}
+        </Button>
+
       </Paper>
 
       <Snackbar 

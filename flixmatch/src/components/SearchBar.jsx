@@ -37,11 +37,10 @@ function SearchBar() {
     }
   }, [query]);
 
-  // Fonction pour ouvrir une recherche Google pour un acteur
-  const handleActorSearch = (event, name) => {
-    event.preventDefault();
-    event.stopPropagation();
-    window.open(`https://www.google.com/search?q=${encodeURIComponent(name)}`, '_blank');
+  // Fonction pour ouvrir une recherche Google pour un acteur dans une nouvelle page
+  const handleActorClick = (item) => {
+    // Rediriger vers la page de l'acteur
+    window.open(`https://www.google.com/search?q=${encodeURIComponent(item.name)}`, '_blank');
   };
 
   return (
@@ -85,15 +84,17 @@ function SearchBar() {
           <List sx={{ p: 0 }}>
             {results.map((item) => (
               <ListItem 
-                key={item.id} 
-                component={Link}
-                to={`/${item.media_type}/${item.id}`}
+                key={item.id}
+                onClick={() => item.media_type === 'person' ? handleActorClick(item) : null}
+                component={item.media_type === 'person' ? 'div' : Link}
+                to={item.media_type === 'person' ? undefined : `/${item.media_type}/${item.id}`}
                 sx={{ 
                   '&:hover': { 
                     backgroundColor: 'action.hover' 
                   },
                   textDecoration: 'none',
-                  color: 'text.primary'
+                  color: 'text.primary',
+                  cursor: item.media_type === 'person' ? 'pointer' : 'default'
                 }}
                 divider
               >
@@ -118,7 +119,6 @@ function SearchBar() {
                         component="span" 
                         variant="body2" 
                         color="primary"
-                        onClick={(e) => handleActorSearch(e, item.name)}
                         sx={{ 
                           cursor: 'pointer',
                           '&:hover': { textDecoration: 'underline' }

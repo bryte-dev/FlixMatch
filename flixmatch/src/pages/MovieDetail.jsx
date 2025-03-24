@@ -31,9 +31,34 @@ function MovieDetail() {
   const [recommendations, setRecommendations] = useState([]);
   const [reviews, setReviews] = useState([]);
   const [averageRating, setAverageRating] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(true); // Défini à true par défaut
   const [refreshTrigger, setRefreshTrigger] = useState(false);
+  const [replies, setReplies] = useState({});
+  const [replyCursors, setReplyCursors] = useState({});
+  const [loadingReplies, setLoadingReplies] = useState({});
+  const [replyInputs, setReplyInputs] = useState({}); // Stocke le texte des réponses
+  const [showReplyInput, setShowReplyInput] = useState({}); // Stocke l'état d'affichage
+  const [inWatchlist, setInWatchlist] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [loadedReviews, setLoadedReviews] = useState({}); // Pour éviter les chargements multiples
+  const [checkingWatchlist, setCheckingWatchlist] = useState(false);
 
+  // Vérifier l'authentification de l'utilisateur
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const response = await axios.get('http://localhost:3000/auth/check', { withCredentials: true });
+        setIsAuthenticated(response.data.isAuthenticated || true);
+      } catch (error) {
+        console.error("Erreur vérification authentification:", error);
+        setIsAuthenticated(true); // En cas d'erreur, on considère l'utilisateur comme authentifié
+      }
+    };
+    
+    checkAuth();
+  }, []);
+
+  // Charger les détails du film
   useEffect(() => {
     const fetchMovieDetails = async () => {
       try {
@@ -42,7 +67,6 @@ function MovieDetail() {
 
         const recResponse = await axios.get(`http://localhost:3000/tmdb/recommendations/${tmdbId}/${type}`);
         setRecommendations(recResponse.data.results || []);
-
       } catch (error) {
         console.error("Erreur récupération des détails :", error);
       } finally {
@@ -51,10 +75,296 @@ function MovieDetail() {
     };
 
     fetchMovieDetails();
-  }, [tmdbId, type, refreshTrigger]);
+  }, [tmdbId, type]);
+
+  // Vérifier si le film est dans la watchlist/favoris
+  useEffect(() => {
+    const checkWatchlistStatus = async () => {
+      if (!isAuthenticated || !movie || checkingWatchlist) return;
+      
+      setCheckingWatchlist(true);
+      
+      try {
+        // Vérifier dans la watchlist
+        const watchlistResponse = await axios.get(`http://localhost:3000/watchlist`, 
+          { withCredentials: true }
+        );
+        
+        if (watchlistResponse.data && Array.isArray(watchlistResponse.data)) {
+          // Chercher le film dans la watchlist
+          const movieInWatchlist = watchlistResponse.data.find(
+            item => item.tmdb_id === parseInt(tmdbId)
+          );
+          
+          if (movieInWatchlist) {
+            setInWatchlist(true);
+            setIsFavorite(movieInWatchlist.isFavorite || false);
+            console.log("✅ Film trouvé dans la watchlist:", movieInWatchlist);
+          } else {
+            setInWatchlist(false);
+            setIsFavorite(false);
+            console.log("❌ Film non trouvé dans la watchlist");
+          }
+        }
+        
+        // Vérifier dans les favoris
+        const favoritesResponse = await axios.get(`http://localhost:3000/favorites`, 
+          { withCredentials: true }
+        );
+        
+        if (favoritesResponse.data && Array.isArray(favoritesResponse.data)) {
+          // Chercher le film dans les favoris
+          const movieInFavorites = favoritesResponse.data.find(
+            item => item.tmdb_id === parseInt(tmdbId)
+          );
+          
+          if (movieInFavorites) {
+            setInWatchlist(true); // Si dans les favoris, forcément dans la watchlist
+            setIsFavorite(true);
+            console.log("✅ Film trouvé dans les favoris:", movieInFavorites);
+          }
+        }
+      } catch (error) {
+        console.error("Erreur vérification watchlist/favoris:", error);
+      } finally {
+        setCheckingWatchlist(false);
+      }
+    };
+    
+    checkWatchlistStatus();
+  }, [isAuthenticated, movie, tmdbId, refreshTrigger]);
+
+  // Charger les avis
+  useEffect(() => {
+    const fetchReviews = async () => {
+      try {
+        const res = await axios.get(`http://localhost:3000/reviews/${tmdbId}`);
+        
+        if (res.data && Array.isArray(res.data.reviews)) {
+          // Filtrer pour ne garder que les avis principaux (sans parentId)
+          const mainReviews = res.data.reviews.filter(review => !review.parentId);
+          setReviews(mainReviews);
+          setAverageRating(res.data.avgRating);
+        } else {
+          console.error("❌ Erreur : reviews n'est pas un tableau :", res.data);
+        }
+      } catch (error) {
+        console.error("❌ Erreur récupération avis :", error);
+      }
+    };
+  
+    fetchReviews();
+  }, [tmdbId, refreshTrigger]);
+  
+  // Fonction pour récupérer les réponses
+  const fetchReplies = async (reviewId) => {
+    // Éviter de charger plusieurs fois les mêmes réponses
+    if (loadingReplies[reviewId] || loadedReviews[reviewId]) return;
+    
+    setLoadingReplies(prev => ({ ...prev, [reviewId]: true }));
+  
+    try {
+      const res = await axios.get(`http://localhost:3000/reviews/${reviewId}/replies`, {
+        withCredentials: true
+      });
+  
+      if (res.data && Array.isArray(res.data.replies)) {
+        setReplies(prev => ({
+          ...prev,
+          [reviewId]: res.data.replies
+        }));
+        
+        // Marquer comme chargé
+        setLoadedReviews(prev => ({ ...prev, [reviewId]: true }));
+      }
+    } catch (error) {
+      console.error("❌ Erreur récupération des réponses :", error);
+    } finally {
+      setLoadingReplies(prev => ({ ...prev, [reviewId]: false }));
+    }
+  };
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', height: '100vh' }}><CircularProgress /></Box>;
   if (!movie) return <Container sx={{ mt: 12, textAlign: 'center' }}><Typography variant="h5">Aucune info disponible</Typography></Container>;
+
+  const handleAddToWatchlist = async () => {
+    if (!isAuthenticated) {
+      alert("Vous devez être connecté pour ajouter à votre watchlist");
+      return;
+    }
+    
+    try {
+      await axios.post(
+        "http://localhost:3000/watchlist",
+        { 
+          tmdb_id: movie.id, 
+          title: movie.title || movie.name, 
+          media_type: type, 
+          poster_path: movie.poster_path 
+        },
+        { withCredentials: true }
+      );
+      setInWatchlist(true);
+      alert("Ajouté à votre watchlist avec succès!");
+      // Déclencher une mise à jour pour rafraîchir les statuts
+      setRefreshTrigger(prev => !prev);
+    } catch (error) {
+      console.error("Erreur ajout Watchlist :", error);
+      alert("Erreur lors de l'ajout à la watchlist");
+    }
+  };
+
+  const handleAddToFavorites = async () => {
+    if (!isAuthenticated) {
+      alert("Vous devez être connecté pour ajouter aux favoris");
+      return;
+    }
+    
+    if (!inWatchlist) {
+      // Si pas dans la watchlist, on l'ajoute d'abord
+      try {
+        await axios.post(
+          "http://localhost:3000/watchlist",
+          { 
+            tmdb_id: movie.id, 
+            title: movie.title || movie.name, 
+            media_type: type, 
+            poster_path: movie.poster_path 
+          },
+          { withCredentials: true }
+        );
+        setInWatchlist(true);
+      } catch (error) {
+        console.error("Erreur ajout Watchlist :", error);
+        alert("Erreur lors de l'ajout à la watchlist");
+        return;
+      }
+    }
+    
+    try {
+      await axios.put(
+        `http://localhost:3000/watchlist/${movie.id}/favorite`,
+        { isFavorite: true },
+        { withCredentials: true }
+      );
+      setIsFavorite(true);
+      alert("Ajouté à vos favoris avec succès!");
+      // Déclencher une mise à jour pour rafraîchir les statuts
+      setRefreshTrigger(prev => !prev);
+    } catch (error) {
+      console.error("Erreur ajout Favoris :", error);
+      alert("Erreur lors de l'ajout aux favoris");
+    }
+  };
+
+  const submitReply = async (parentReviewId) => {
+    if (!replyInputs[parentReviewId]) {
+      alert("Écris une réponse avant de poster !");
+      return;
+    }
+    
+    if (!isAuthenticated) {
+      alert("Vous devez être connecté pour poster une réponse");
+      return;
+    }
+  
+    try {
+      const res = await axios.post(
+        `http://localhost:3000/reviews`,
+        {
+          movieId: movie.id,
+          comment: replyInputs[parentReviewId],
+          parentId: parentReviewId,
+        },
+        { withCredentials: true }
+      );
+  
+      if (res.data && res.data.review) {
+        // Ajouter la nouvelle réponse
+        setReplies(prev => ({
+          ...prev,
+          [parentReviewId]: [...(prev[parentReviewId] || []), res.data.review]
+        }));
+        
+        // Réinitialiser le formulaire
+        setReplyInputs(prev => ({ ...prev, [parentReviewId]: "" }));
+        setShowReplyInput(prev => ({ ...prev, [parentReviewId]: false }));
+      }
+    } catch (error) {
+      console.error("❌ Erreur lors de l'envoi de la réponse :", error);
+      alert("Impossible de poster la réponse !");
+    }
+  };
+  
+  const renderReplies = (reviewId) => {
+    // Charger les réponses si pas encore fait
+    if (!loadedReviews[reviewId] && !loadingReplies[reviewId]) {
+      fetchReplies(reviewId);
+      return <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}><CircularProgress size={20} /></Box>;
+    }
+    
+    // Si chargement en cours
+    if (loadingReplies[reviewId]) {
+      return <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}><CircularProgress size={20} /></Box>;
+    }
+    
+    // Si pas de réponses
+    if (!replies[reviewId] || replies[reviewId].length === 0) {
+      return null;
+    }
+    
+    return (
+      <Box sx={{ ml: 4, mt: 2 }}>
+        {replies[reviewId].map(reply => (
+          <Paper key={reply.id} sx={{ p: 2, mb: 2, bgcolor: 'background.paper', borderRadius: 2 }}>
+            <Typography variant="subtitle2" color="text.secondary">
+              <strong>{reply.user?.email || "Utilisateur inconnu"}</strong>
+            </Typography>
+            <Typography variant="body1" sx={{ my: 1 }}>{reply.comment}</Typography>
+            <Typography variant="caption" color="text.secondary">
+              {new Date(reply.createdAt).toLocaleDateString()}
+            </Typography>
+            
+            {/* Bouton pour répondre */}
+            {isAuthenticated && (
+              <Box sx={{ mt: 2 }}>
+                <Button
+                  size="small"
+                  onClick={() => setShowReplyInput(prev => ({ ...prev, [reply.id]: !prev[reply.id] }))}
+                  color="primary"
+                >
+                  {showReplyInput[reply.id] ? "Annuler" : "Répondre"}
+                </Button>
+                
+                {showReplyInput[reply.id] && (
+                  <Box sx={{ mt: 2 }}>
+                    <TextField
+                      value={replyInputs[reply.id] || ""}
+                      onChange={(e) => setReplyInputs(prev => ({ ...prev, [reply.id]: e.target.value }))}
+                      fullWidth
+                      multiline
+                      rows={2}
+                      placeholder="Répondre à ce commentaire..."
+                      variant="outlined"
+                      sx={{ mb: 2 }}
+                    />
+                    <Button
+                      onClick={() => submitReply(reply.id)}
+                      variant="contained"
+                      color="primary"
+                      endIcon={<SendIcon />}
+                    >
+                      Envoyer
+                    </Button>
+                  </Box>
+                )}
+              </Box>
+            )}
+          </Paper>
+        ))}
+      </Box>
+    );
+  };
 
   return (
     <Container maxWidth="lg" sx={{ mt: 12, mb: 8 }}>
@@ -62,13 +372,33 @@ function MovieDetail() {
         {/* Affiche */}
         <Grid item xs={12} md={4}>
           <Box sx={{ position: 'sticky', top: 100 }}>
-            <img src={movie.poster_path ? `https://image.tmdb.org/t/p/w780${movie.poster_path}` : "/default-movie.png"}
-                 alt={movie.title || movie.name} 
-                 style={{ width: '100%', borderRadius: 8, maxHeight: "600px", objectFit: "cover" }} />
+            <img 
+              src={movie.poster_path ? `https://image.tmdb.org/t/p/w780${movie.poster_path}` : "/default-movie.png"}
+              alt={movie.title || movie.name} 
+              style={{ width: '100%', borderRadius: 8, maxHeight: "600px", objectFit: "cover" }} 
+            />
+            
+            {/* Boutons sous l'affiche */}
             {isAuthenticated && (
-              <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between' }}>
-                <Button variant="contained" color="primary" startIcon={<BookmarkAddIcon />} fullWidth>Watchlist</Button>
-                <Button variant="contained" color="secondary" startIcon={<FavoriteIcon />} fullWidth>Favoris</Button>
+              <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Button 
+                  variant="contained" 
+                  color="primary" 
+                  startIcon={<BookmarkAddIcon />} 
+                  fullWidth 
+                  disabled={inWatchlist || checkingWatchlist}
+                  onClick={handleAddToWatchlist}
+                >
+                  {checkingWatchlist ? (
+                    <CircularProgress size={20} color="inherit" />
+                  ) : inWatchlist ? (
+                    "Déjà dans la Watchlist"
+                  ) : (
+                    "Ajouter à la Watchlist"
+                  )}
+                </Button>
+
+               
               </Box>
             )}
           </Box>
@@ -152,9 +482,66 @@ function MovieDetail() {
           <Box sx={{ mt: 6 }}>
             <Typography variant="h5" gutterBottom>Avis et commentaires</Typography>
             <Divider sx={{ mb: 3 }} />
-            <Typography variant="body1" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
-              Aucun avis pour le moment.
-            </Typography>
+
+            {reviews.length > 0 ? (
+              reviews.map((review) => (
+                <Paper key={review.id} sx={{ p: 3, mb: 3, bgcolor: 'background.paper', borderRadius: 2 }}>
+                  <Typography variant="subtitle1">
+                    <strong>{review.user?.email || "Utilisateur inconnu"}</strong>
+                  </Typography>
+                  {review.rating && (
+                    <Rating value={review.rating} readOnly size="small" />
+                  )}
+                  <Typography variant="body1" paragraph>{review.comment}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {new Date(review.createdAt).toLocaleDateString()}
+                  </Typography>
+
+                  {/* Affichage des réponses */}
+                  {renderReplies(review.id)}
+
+                  {/* Formulaire pour répondre à un avis */}
+                  {isAuthenticated && (
+                    <Box sx={{ mt: 2 }}>
+                      <Button
+                        size="small"
+                        onClick={() => setShowReplyInput(prev => ({ ...prev, [review.id]: !prev[review.id] }))}
+                        color="primary"
+                      >
+                        {showReplyInput[review.id] ? "Annuler" : "Répondre"}
+                      </Button>
+
+                      {showReplyInput[review.id] && (
+                        <Box sx={{ mt: 2 }}>
+                          <TextField
+                            value={replyInputs[review.id] || ""}
+                            onChange={(e) => setReplyInputs(prev => ({ ...prev, [review.id]: e.target.value }))}
+                            fullWidth
+                            multiline
+                            rows={3}
+                            placeholder="Votre réponse..."
+                            variant="outlined"
+                            sx={{ mb: 2 }}
+                          />
+                          <Button
+                            onClick={() => submitReply(review.id)}
+                            variant="contained"
+                            color="primary"
+                            endIcon={<SendIcon />}
+                          >
+                            Envoyer
+                          </Button>
+                        </Box>
+                      )}
+                    </Box>
+                  )}
+                </Paper>
+              ))
+            ) : (
+              <Typography variant="body1" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+                Aucun avis pour le moment.
+              </Typography>
+            )}
           </Box>
         </Grid>
       </Grid>
