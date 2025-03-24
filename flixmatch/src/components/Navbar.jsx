@@ -275,7 +275,7 @@ const styles = `
   }
 
   /* Media queries - Approche simplifiée */
-  @media (max-width: 768px) {
+  @media (max-width: 1453px) {
     .nav-links, .search-container, .desktop-buttons {
       display: none;
     }
