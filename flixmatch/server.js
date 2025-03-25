@@ -706,17 +706,27 @@ if (process.env.NODE_ENV === 'production') {
 const PORT = process.env.PORT || 3000;
 
 // Démarrer le serveur en écoutant sur toutes les interfaces
+import os from 'os';
+
+// Utiliser le port fourni par Railway ou 3000 par défaut
+const PORT = process.env.PORT || 3000;
+
+// Démarrer le serveur en écoutant sur toutes les interfaces
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Serveur en marche sur http://localhost:${PORT}`) ;
   
   // Afficher l'adresse IP pour accès depuis d'autres appareils
-  const { networkInterfaces } = 'os';
-  const nets = networkInterfaces();
-  for (const name of Object.keys(nets)) {
-    for (const net of nets[name]) {
-      if (net.family === 'IPv4' && !net.internal) {
-        console.log(`Accessible depuis: http://${net.address}:${PORT}`) ;
+  try {
+    const nets = os.networkInterfaces();
+    for (const name of Object.keys(nets)) {
+      for (const net of nets[name]) {
+        if (net.family === 'IPv4' && !net.internal) {
+          console.log(`Accessible depuis: http://${net.address}:${PORT}`) ;
+        }
       }
     }
+  } catch (error) {
+    console.log("Impossible d'afficher les adresses IP:", error.message);
   }
 });
+
