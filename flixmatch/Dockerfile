@@ -9,6 +9,9 @@ RUN npm install
 # Copier le code source
 COPY . .
 
+# Générer le client Prisma avant de démarrer
+RUN npx prisma generate
+
 # Générer le build du frontend
 RUN npm run build
 
