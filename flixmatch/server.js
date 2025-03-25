@@ -667,6 +667,11 @@ app.put("/account/update", authMiddleware, async (req, res) => {
   }
 });
 
-
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static('dist')); // ou 'build' selon votre configuration
+  app.get('*', (req, res) => {
+    res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+  });
+}
 
 app.listen(3000, () => console.log("Serveur en marche sur http://localhost:3000"));
