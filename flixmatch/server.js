@@ -8,6 +8,7 @@ import cookieParser from "cookie-parser";
 import axios from "axios";
 import path from 'path';
 import { fileURLToPath } from 'url';
+import os from 'os';
 
 // Pour obtenir l'équivalent de __dirname en ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -709,7 +710,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`Serveur en marche sur http://localhost:${PORT}`) ;
   
   // Afficher l'adresse IP pour accès depuis d'autres appareils
-  const { networkInterfaces } = require('os');
+  const { networkInterfaces } = 'os';
   const nets = networkInterfaces();
   for (const name of Object.keys(nets)) {
     for (const net of nets[name]) {
