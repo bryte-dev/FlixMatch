@@ -6,6 +6,12 @@ import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import axios from "axios";
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Pour obtenir l'équivalent de __dirname en ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 dotenv.config();
 const app = express();
@@ -682,6 +688,7 @@ app.put("/account/update", authMiddleware, async (req, res) => {
   }
 });
 
+
 // À la fin du fichier, remplacez la partie serveur statique par :
 if (process.env.NODE_ENV === 'production') {
   // Servir les fichiers statiques du build
@@ -692,6 +699,7 @@ if (process.env.NODE_ENV === 'production') {
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
   });
 }
+
 
 // Utiliser le port fourni par Railway ou 3000 par défaut
 const PORT = process.env.PORT || 3000;
