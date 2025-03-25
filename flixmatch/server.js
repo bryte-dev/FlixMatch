@@ -11,22 +11,37 @@ dotenv.config();
 const app = express();
 const prisma = new PrismaClient();
 
-app.use(cors({ origin: "http://localhost:5173", credentials: true }));
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' 
+    ? '*' // En production, accepter toutes les origines (à ajuster selon vos besoins)
+    : "http://localhost:5173", // En développement, uniquement localhost
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}) );
+
 app.use(express.json());
 app.use(cookieParser());
 
 const JWT_SECRET = process.env.JWT_SECRET || "ultra_secret_key";
 const JWT_EXPIRES_IN = "7d"; // Durée du token
 
+// Middleware pour logger les requêtes (aide au débogage)
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path}`);
+  next();
+});
+
 // 🔥 Middleware d'auth
 const authMiddleware = (req, res, next) => {
-  const token = req.cookies.token;
+  // Accepter le token soit des cookies, soit du header Authorization
+  const token = req.cookies.token || req.headers.authorization?.split(' ')[1];
   console.log("🧐 Token reçu :", token);
 
   if (!token) return res.status(401).json({ error: "Accès refusé, token manquant" });
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
     req.userId = decoded.userId;
     console.log("✅ User ID authentifié :", req.userId);
     next();
@@ -667,11 +682,32 @@ app.put("/account/update", authMiddleware, async (req, res) => {
   }
 });
 
+// À la fin du fichier, remplacez la partie serveur statique par :
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static('dist')); // ou 'build' selon votre configuration
+  // Servir les fichiers statiques du build
+  app.use(express.static(path.join(__dirname, 'dist')));
+  
+  // Pour toutes les autres requêtes, renvoyer l'index.html
   app.get('*', (req, res) => {
-    res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
   });
 }
 
-app.listen(3000, () => console.log("Serveur en marche sur http://localhost:3000"));
+// Utiliser le port fourni par Railway ou 3000 par défaut
+const PORT = process.env.PORT || 3000;
+
+// Démarrer le serveur en écoutant sur toutes les interfaces
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Serveur en marche sur http://localhost:${PORT}`) ;
+  
+  // Afficher l'adresse IP pour accès depuis d'autres appareils
+  const { networkInterfaces } = require('os');
+  const nets = networkInterfaces();
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name]) {
+      if (net.family === 'IPv4' && !net.internal) {
+        console.log(`Accessible depuis: http://${net.address}:${PORT}`) ;
+      }
+    }
+  }
+});
