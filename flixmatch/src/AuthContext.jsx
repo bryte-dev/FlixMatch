@@ -7,11 +7,21 @@ export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    axios.get("http://localhost:3000/me", { withCredentials: true })
-      .then(res => setUser(res.data))
-      .catch(() => setUser(null));
+    const checkAuth = async () => {
+      try {
+        const res = await axios.get("http://localhost:3000/me", { withCredentials: true });
+        setUser(res.data);
+      } catch (error) {
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    checkAuth();
   }, []);
 
   const login = async (email, password) => {
@@ -25,8 +35,20 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  const updateProfile = async (userData) => {
+    try {
+      await axios.put("http://localhost:3000/account/update", userData, { withCredentials: true });
+      // Mettre à jour les données utilisateur localement
+      setUser(prev => ({ ...prev, ...userData }));
+      return true;
+    } catch (error) {
+      console.error("Erreur lors de la mise à jour du profil:", error);
+      return false;
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
+    <AuthContext.Provider value={{ user, login, logout, updateProfile, loading }}>
       {children}
     </AuthContext.Provider>
   );

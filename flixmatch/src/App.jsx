@@ -9,6 +9,7 @@ import Seen from "./pages/Seen";
 import AdvancedSearch from "./pages/AdvancedSearch";
 import Junk from "./pages/Junk";
 import Register from "./pages/Register";
+import Account from "./pages/Account";
 import Navbar from "./components/Navbar"; // 🔥 Vérifie que le chemin est bon
 import SearchResults from "./components/SearchBar";
 import MovieDetail from "./pages/MovieDetail";
@@ -33,6 +34,7 @@ const App = () => {
         <Route path="/:type/:tmdbId" element={<MovieDetail />} />
         <Route path="/seen" element={<PrivateRoute><Seen /></PrivateRoute>} />
         <Route path="/junk" element={<PrivateRoute><Junk /></PrivateRoute>} />
+        <Route path="/account" element={<PrivateRoute><Account /></PrivateRoute>} />
         <Route path="/advanced-search" element={<AdvancedSearch />} />
       </Routes>
     </AuthProvider>

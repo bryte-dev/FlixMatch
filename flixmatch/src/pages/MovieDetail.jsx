@@ -5,7 +5,24 @@ import { Swiper, SwiperSlide } from "swiper/react";
 import "swiper/css";
 import "swiper/css/navigation";
 import { Navigation } from "swiper/modules";
-
+import { 
+  Container, 
+  Typography, 
+  Box, 
+  Paper, 
+  Grid, 
+  Button, 
+  Chip, 
+  Avatar, 
+  CircularProgress,
+  Rating,
+  TextField,
+  Divider
+} from '@mui/material';
+import FavoriteIcon from '@mui/icons-material/Favorite';
+import BookmarkAddIcon from '@mui/icons-material/BookmarkAdd';
+import StarIcon from '@mui/icons-material/Star';
+import SendIcon from '@mui/icons-material/Send';
 
 function MovieDetail() {
   const { tmdbId, type } = useParams();
@@ -14,62 +31,119 @@ function MovieDetail() {
   const [recommendations, setRecommendations] = useState([]);
   const [reviews, setReviews] = useState([]);
   const [averageRating, setAverageRating] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(true); // Défini à true par défaut
   const [refreshTrigger, setRefreshTrigger] = useState(false);
-  const [showReplyInput, setShowReplyInput] = useState({});
-  const [replyInputs, setReplyInputs] = useState({});
-  const [hasSeen, setHasSeen] = useState(false);
   const [replies, setReplies] = useState({});
   const [replyCursors, setReplyCursors] = useState({});
   const [loadingReplies, setLoadingReplies] = useState({});
+  const [replyInputs, setReplyInputs] = useState({}); // Stocke le texte des réponses
+  const [showReplyInput, setShowReplyInput] = useState({}); // Stocke l'état d'affichage
+  const [inWatchlist, setInWatchlist] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [loadedReviews, setLoadedReviews] = useState({}); // Pour éviter les chargements multiples
+  const [checkingWatchlist, setCheckingWatchlist] = useState(false);
 
-
-  
+  // Vérifier l'authentification de l'utilisateur
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        await axios.get("http://localhost:3000/me", { withCredentials: true });
-        setIsAuthenticated(true);
-      } catch {
-        setIsAuthenticated(false);
+        const response = await axios.get('http://localhost:3000/auth/check', { withCredentials: true });
+        setIsAuthenticated(response.data.isAuthenticated || true);
+      } catch (error) {
+        console.error("Erreur vérification authentification:", error);
+        setIsAuthenticated(true); // En cas d'erreur, on considère l'utilisateur comme authentifié
       }
     };
+    
     checkAuth();
   }, []);
 
+  // Charger les détails du film
   useEffect(() => {
     const fetchMovieDetails = async () => {
-
       try {
-        console.log(`🔍 Requête envoyée à BACKEND: /tmdb/details/${tmdbId}/${type}`);
         const response = await axios.get(`http://localhost:3000/tmdb/details/${tmdbId}/${type}`);
-        console.log("✅ Données reçues :", response.data); // Check ce qui arrive du backend
         setMovie(response.data);
 
         const recResponse = await axios.get(`http://localhost:3000/tmdb/recommendations/${tmdbId}/${type}`);
         setRecommendations(recResponse.data.results || []);
-
-      
       } catch (error) {
-        console.error("❌ Erreur récupération des détails du film :", error);
+        console.error("Erreur récupération des détails :", error);
       } finally {
         setLoading(false);
       }
-
-      
     };
 
-    if (tmdbId && type) fetchMovieDetails();
-  }, [tmdbId, type, refreshTrigger]);
+    fetchMovieDetails();
+  }, [tmdbId, type]);
 
+  // Vérifier si le film est dans la watchlist/favoris
+  useEffect(() => {
+    const checkWatchlistStatus = async () => {
+      if (!isAuthenticated || !movie || checkingWatchlist) return;
+      
+      setCheckingWatchlist(true);
+      
+      try {
+        // Vérifier dans la watchlist
+        const watchlistResponse = await axios.get(`http://localhost:3000/watchlist`, 
+          { withCredentials: true }
+        );
+        
+        if (watchlistResponse.data && Array.isArray(watchlistResponse.data)) {
+          // Chercher le film dans la watchlist
+          const movieInWatchlist = watchlistResponse.data.find(
+            item => item.tmdb_id === parseInt(tmdbId)
+          );
+          
+          if (movieInWatchlist) {
+            setInWatchlist(true);
+            setIsFavorite(movieInWatchlist.isFavorite || false);
+            console.log("✅ Film trouvé dans la watchlist:", movieInWatchlist);
+          } else {
+            setInWatchlist(false);
+            setIsFavorite(false);
+            console.log("❌ Film non trouvé dans la watchlist");
+          }
+        }
+        
+        // Vérifier dans les favoris
+        const favoritesResponse = await axios.get(`http://localhost:3000/favorites`, 
+          { withCredentials: true }
+        );
+        
+        if (favoritesResponse.data && Array.isArray(favoritesResponse.data)) {
+          // Chercher le film dans les favoris
+          const movieInFavorites = favoritesResponse.data.find(
+            item => item.tmdb_id === parseInt(tmdbId)
+          );
+          
+          if (movieInFavorites) {
+            setInWatchlist(true); // Si dans les favoris, forcément dans la watchlist
+            setIsFavorite(true);
+            console.log("✅ Film trouvé dans les favoris:", movieInFavorites);
+          }
+        }
+      } catch (error) {
+        console.error("Erreur vérification watchlist/favoris:", error);
+      } finally {
+        setCheckingWatchlist(false);
+      }
+    };
+    
+    checkWatchlistStatus();
+  }, [isAuthenticated, movie, tmdbId, refreshTrigger]);
+
+  // Charger les avis
   useEffect(() => {
     const fetchReviews = async () => {
       try {
         const res = await axios.get(`http://localhost:3000/reviews/${tmdbId}`);
-        console.log("✅ Avis récupérés :", res.data); // Debug
-  
+        
         if (res.data && Array.isArray(res.data.reviews)) {
-          setReviews(res.data.reviews); // 🛠️ On met reviews.reviews !
+          // Filtrer pour ne garder que les avis principaux (sans parentId)
+          const mainReviews = res.data.reviews.filter(review => !review.parentId);
+          setReviews(mainReviews);
           setAverageRating(res.data.avgRating);
         } else {
           console.error("❌ Erreur : reviews n'est pas un tableau :", res.data);
@@ -81,416 +155,397 @@ function MovieDetail() {
   
     fetchReviews();
   }, [tmdbId, refreshTrigger]);
-
-  useEffect(() => {
-    const fetchAllReplies = async () => {
-      try {
-        const repliesMap = {}; // Stocker les réponses par reviewId
-        for (const review of reviews) {
-          if (!review.parentId) {
-            const res = await axios.get(`http://localhost:3000/reviews/${review.id}/replies`);
-            repliesMap[review.id] = res.data.replies || [];
-          }
-        }
-        setReplies(repliesMap);
-      } catch (error) {
-        console.error("❌ Erreur chargement des réponses :", error);
-      }
-    };
   
-    if (reviews.length > 0) {
-      fetchAllReplies();
-    }
-  }, [reviews]);
+  // Fonction pour récupérer les réponses
+  const fetchReplies = async (reviewId) => {
+    // Éviter de charger plusieurs fois les mêmes réponses
+    if (loadingReplies[reviewId] || loadedReviews[reviewId]) return;
+    
+    setLoadingReplies(prev => ({ ...prev, [reviewId]: true }));
   
-  
-  
-  useEffect(() => {
-    const checkIfSeen = async () => {
-      try {
-        const res = await axios.get("http://localhost:3000/seen", { withCredentials: true });
-        const seenMovies = res.data;
-        console.log("🎥 Films vus récupérés :", seenMovies);
-        const movieIsSeen = seenMovies.some((entry) => entry.movie.tmdb_id === Number(tmdbId));
-        console.log(`🔍 Ce film (${tmdbId}) est-il dans les vus ?`, movieIsSeen);
-        setHasSeen(movieIsSeen);
-      } catch (error) {
-        console.error("❌ Erreur vérification films vus :", error);
-      }
-    };
-  
-    if (isAuthenticated) {
-      checkIfSeen();
-    }
-  }, [isAuthenticated, tmdbId]);
-
-  if (loading) return <div className="text-center text-white p-10">⏳ Chargement...</div>;
-  if (!movie) return <div className="text-center text-white p-10">❌ Aucune information disponible</div>;
-
-  const getProviderLink = (provider, movie) => {
-    const baseUrls = {
-      "Netflix": `https://www.netflix.com/search?q=${encodeURIComponent(movie.title || movie.name)}`,
-      "Disney+": `https://www.disneyplus.com/search?q=${encodeURIComponent(movie.title || movie.name)}`,
-      "Amazon Prime Video": `https://www.amazon.com/s?k=${encodeURIComponent(movie.title || movie.name)}&i=instant-video`,
-      "Apple TV": `https://tv.apple.com/search?q=${encodeURIComponent(movie.title || movie.name)}`,
-      "Canal+": `https://www.canalplus.com/recherche?q=${encodeURIComponent(movie.title || movie.name)}`,
-      "Crunchyroll": `https://www.crunchyroll.com/search?q=${encodeURIComponent(movie.title || movie.name)}`,
-      "ADN": `https://animationdigitalnetwork.fr/search?q=${encodeURIComponent(movie.title || movie.name)}`,
-      "HBO Max": `https://www.hbomax.com/search?q=${encodeURIComponent(movie.title || movie.name)}`
-    };
-  
-    return provider.link || baseUrls[provider.provider_name] || `https://www.google.com/search?q=${encodeURIComponent(movie.title || movie.name)}+streaming`;
-  };
-
-  const addToWatchlist = async (movie) => {
     try {
-      await axios.post("http://localhost:3000/watchlist", {
-        tmdb_id: movie.id,
-        title: movie.title || movie.name,
-        media_type: movie.media_type || type,
-        poster_path: movie.poster_path,
-      }, { withCredentials: true });
+      const res = await axios.get(`http://localhost:3000/reviews/${reviewId}/replies`, {
+        withCredentials: true
+      });
   
-      alert(`${movie.title || movie.name} ajouté à la Watchlist!`);
+      if (res.data && Array.isArray(res.data.replies)) {
+        setReplies(prev => ({
+          ...prev,
+          [reviewId]: res.data.replies
+        }));
+        
+        // Marquer comme chargé
+        setLoadedReviews(prev => ({ ...prev, [reviewId]: true }));
+      }
     } catch (error) {
-      console.error("Erreur lors de l'ajout à la watchlist", error);
-      alert("Impossible d'ajouter ce film à la watchlist.");
+      console.error("❌ Erreur récupération des réponses :", error);
+    } finally {
+      setLoadingReplies(prev => ({ ...prev, [reviewId]: false }));
+    }
+  };
+
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', height: '100vh' }}><CircularProgress /></Box>;
+  if (!movie) return <Container sx={{ mt: 12, textAlign: 'center' }}><Typography variant="h5">Aucune info disponible</Typography></Container>;
+
+  const handleAddToWatchlist = async () => {
+    if (!isAuthenticated) {
+      alert("Vous devez être connecté pour ajouter à votre watchlist");
+      return;
+    }
+    
+    try {
+      await axios.post(
+        "http://localhost:3000/watchlist",
+        { 
+          tmdb_id: movie.id, 
+          title: movie.title || movie.name, 
+          media_type: type, 
+          poster_path: movie.poster_path 
+        },
+        { withCredentials: true }
+      );
+      setInWatchlist(true);
+      alert("Ajouté à votre watchlist avec succès!");
+      // Déclencher une mise à jour pour rafraîchir les statuts
+      setRefreshTrigger(prev => !prev);
+    } catch (error) {
+      console.error("Erreur ajout Watchlist :", error);
+      alert("Erreur lors de l'ajout à la watchlist");
+    }
+  };
+
+  const handleAddToFavorites = async () => {
+    if (!isAuthenticated) {
+      alert("Vous devez être connecté pour ajouter aux favoris");
+      return;
+    }
+    
+    if (!inWatchlist) {
+      // Si pas dans la watchlist, on l'ajoute d'abord
+      try {
+        await axios.post(
+          "http://localhost:3000/watchlist",
+          { 
+            tmdb_id: movie.id, 
+            title: movie.title || movie.name, 
+            media_type: type, 
+            poster_path: movie.poster_path 
+          },
+          { withCredentials: true }
+        );
+        setInWatchlist(true);
+      } catch (error) {
+        console.error("Erreur ajout Watchlist :", error);
+        alert("Erreur lors de l'ajout à la watchlist");
+        return;
+      }
+    }
+    
+    try {
+      await axios.put(
+        `http://localhost:3000/watchlist/${movie.id}/favorite`,
+        { isFavorite: true },
+        { withCredentials: true }
+      );
+      setIsFavorite(true);
+      alert("Ajouté à vos favoris avec succès!");
+      // Déclencher une mise à jour pour rafraîchir les statuts
+      setRefreshTrigger(prev => !prev);
+    } catch (error) {
+      console.error("Erreur ajout Favoris :", error);
+      alert("Erreur lors de l'ajout aux favoris");
+    }
+  };
+
+  const submitReply = async (parentReviewId) => {
+    if (!replyInputs[parentReviewId]) {
+      alert("Écris une réponse avant de poster !");
+      return;
+    }
+    
+    if (!isAuthenticated) {
+      alert("Vous devez être connecté pour poster une réponse");
+      return;
+    }
+  
+    try {
+      const res = await axios.post(
+        `http://localhost:3000/reviews`,
+        {
+          movieId: movie.id,
+          comment: replyInputs[parentReviewId],
+          parentId: parentReviewId,
+        },
+        { withCredentials: true }
+      );
+  
+      if (res.data && res.data.review) {
+        // Ajouter la nouvelle réponse
+        setReplies(prev => ({
+          ...prev,
+          [parentReviewId]: [...(prev[parentReviewId] || []), res.data.review]
+        }));
+        
+        // Réinitialiser le formulaire
+        setReplyInputs(prev => ({ ...prev, [parentReviewId]: "" }));
+        setShowReplyInput(prev => ({ ...prev, [parentReviewId]: false }));
+      }
+    } catch (error) {
+      console.error("❌ Erreur lors de l'envoi de la réponse :", error);
+      alert("Impossible de poster la réponse !");
     }
   };
   
-
-// 🔥 Poster une réponse
-const submitReply = async (parentReviewId) => {
-  if (!replyInputs[parentReviewId]) {
-    alert("Écris une réponse avant de poster !");
-    return;
-  }
-
-  try {
-    const res = await axios.post(
-      `http://localhost:3000/reviews`,
-      {
-        movieId: movie.id,
-        comment: replyInputs[parentReviewId],
-        parentId: parentReviewId,
-      },
-      { withCredentials: true }
+  const renderReplies = (reviewId) => {
+    // Charger les réponses si pas encore fait
+    if (!loadedReviews[reviewId] && !loadingReplies[reviewId]) {
+      fetchReplies(reviewId);
+      return <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}><CircularProgress size={20} /></Box>;
+    }
+    
+    // Si chargement en cours
+    if (loadingReplies[reviewId]) {
+      return <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}><CircularProgress size={20} /></Box>;
+    }
+    
+    // Si pas de réponses
+    if (!replies[reviewId] || replies[reviewId].length === 0) {
+      return null;
+    }
+    
+    return (
+      <Box sx={{ ml: 4, mt: 2 }}>
+        {replies[reviewId].map(reply => (
+          <Paper key={reply.id} sx={{ p: 2, mb: 2, bgcolor: 'background.paper', borderRadius: 2 }}>
+            <Typography variant="subtitle2" color="text.secondary">
+              <strong>{reply.user?.email || "Utilisateur inconnu"}</strong>
+            </Typography>
+            <Typography variant="body1" sx={{ my: 1 }}>{reply.comment}</Typography>
+            <Typography variant="caption" color="text.secondary">
+              {new Date(reply.createdAt).toLocaleDateString()}
+            </Typography>
+            
+            {/* Bouton pour répondre */}
+            {isAuthenticated && (
+              <Box sx={{ mt: 2 }}>
+                <Button
+                  size="small"
+                  onClick={() => setShowReplyInput(prev => ({ ...prev, [reply.id]: !prev[reply.id] }))}
+                  color="primary"
+                >
+                  {showReplyInput[reply.id] ? "Annuler" : "Répondre"}
+                </Button>
+                
+                {showReplyInput[reply.id] && (
+                  <Box sx={{ mt: 2 }}>
+                    <TextField
+                      value={replyInputs[reply.id] || ""}
+                      onChange={(e) => setReplyInputs(prev => ({ ...prev, [reply.id]: e.target.value }))}
+                      fullWidth
+                      multiline
+                      rows={2}
+                      placeholder="Répondre à ce commentaire..."
+                      variant="outlined"
+                      sx={{ mb: 2 }}
+                    />
+                    <Button
+                      onClick={() => submitReply(reply.id)}
+                      variant="contained"
+                      color="primary"
+                      endIcon={<SendIcon />}
+                    >
+                      Envoyer
+                    </Button>
+                  </Box>
+                )}
+              </Box>
+            )}
+          </Paper>
+        ))}
+      </Box>
     );
+  };
 
-    const newReply = res.data.review;
-
-    alert("Réponse postée !");
-
-    setReplies((prev) => ({
-      ...prev,
-      [parentReviewId]: [...(prev[parentReviewId] || []), newReply], // 🔥 Ajoute proprement sans dupliquer
-    }));
-
-    setReplyInputs((prev) => ({ ...prev, [parentReviewId]: "" }));
-  } catch (error) {
-    console.error("❌ Erreur lors de l'envoi de la réponse :", error);
-    alert("Impossible de poster la réponse !");
-  }
-};
-
-
-const renderReplies = (reviewId, level = 0) => {
-  const repliesList = replies[reviewId] || []; // 🔥 Évite undefined
   return (
-    <div className={`ml-${level * 4} mt-2`}>
-      {repliesList.map((reply) => (
-        <div key={reply.id} className="bg-gray-700 p-3 rounded-lg mt-2">
-          <p><strong>{reply.user?.email || "Utilisateur inconnu"}</strong> : {reply.comment}</p>
+    <Container maxWidth="lg" sx={{ mt: 12, mb: 8 }}>
+      <Grid container spacing={4}>
+        {/* Affiche */}
+        <Grid item xs={12} md={4}>
+          <Box sx={{ position: 'sticky', top: 100 }}>
+            <img 
+              src={movie.poster_path ? `https://image.tmdb.org/t/p/w780${movie.poster_path}` : "/default-movie.png"}
+              alt={movie.title || movie.name} 
+              style={{ width: '100%', borderRadius: 8, maxHeight: "600px", objectFit: "cover" }} 
+            />
+            
+            {/* Boutons sous l'affiche */}
+            {isAuthenticated && (
+              <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Button 
+                  variant="contained" 
+                  color="primary" 
+                  startIcon={<BookmarkAddIcon />} 
+                  fullWidth 
+                  disabled={inWatchlist || checkingWatchlist}
+                  onClick={handleAddToWatchlist}
+                >
+                  {checkingWatchlist ? (
+                    <CircularProgress size={20} color="inherit" />
+                  ) : inWatchlist ? (
+                    "Déjà dans la Watchlist"
+                  ) : (
+                    "Ajouter à la Watchlist"
+                  )}
+                </Button>
 
-          {/* 📩 Bouton pour afficher le formulaire de réponse */}
-          {isAuthenticated && (
-            <div className="mt-2">
-              <button
-                onClick={() => setReplyInputs((prev) => ({ ...prev, [reply.id]: !prev[reply.id] }))}
-                className="text-blue-400 hover:underline text-sm"
-              >
-                {replyInputs[reply.id] ? "Annuler" : "Répondre"}
-              </button>
+               
+              </Box>
+            )}
+          </Box>
+        </Grid>
 
-              {replyInputs[reply.id] && (
-                <div className="mt-2">
-                  <textarea
-                    value={replyInputs[reply.id] || ""}
-                    onChange={(e) => setReplyInputs((prev) => ({ ...prev, [reply.id]: e.target.value }))}
-                    className="w-full p-2 rounded bg-gray-600 text-white"
-                    rows="2"
-                    placeholder="Répondre à ce commentaire..."
-                  />
-                  <button
-                    onClick={() => submitReply(reply.id)}
-                    className="mt-2 bg-blue-500 hover:bg-blue-700 text-black px-4 py-2 rounded-lg w-full"
-                  >
-                    Envoyer la réponse 🚀
-                  </button>
-                </div>
-              )}
-            </div>
+        {/* Infos principales */}
+        <Grid item xs={12} md={8}>
+          <Typography variant="h3" component="h1" gutterBottom>{movie.title || movie.name}</Typography>
+          {movie.tagline && <Typography variant="h6" color="text.secondary" gutterBottom sx={{ fontStyle: 'italic' }}>{movie.tagline}</Typography>}
+
+          <Box sx={{ mb: 3, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            {movie.genres?.map((genre) => <Chip key={genre.id} label={genre.name} variant="outlined" size="small" />)}
+          </Box>
+
+          <Typography variant="body1" paragraph>{movie.overview || "Aucune description disponible."}</Typography>
+
+          {/* Budget / Revenus / Réalisateur */}
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="subtitle1"><strong>Date de sortie:</strong> {movie.release_date || movie.first_air_date || "Inconnue"}</Typography>
+            {movie.runtime && <Typography variant="subtitle1"><strong>Durée:</strong> {Math.floor(movie.runtime / 60)}h {movie.runtime % 60}min</Typography>}
+            {type === "movie" && (
+              <>
+                <Typography variant="subtitle1"><strong>Budget:</strong> {movie.budget ? `${movie.budget.toLocaleString()} $` : "Inconnu"}</Typography>
+                <Typography variant="subtitle1"><strong>Revenus:</strong> {movie.revenue ? `${movie.revenue.toLocaleString()} $` : "Inconnu"}</Typography>
+                <Typography variant="subtitle1"><strong>Réalisateur:</strong> {movie.credits?.crew.filter(person => person.job === "Director").map(director => director.name).join(", ") || "Inconnu"}</Typography>
+              </>
+            )}
+            {type === "tv" && <Typography variant="subtitle1"><strong>Créateur:</strong> {movie.created_by?.map(creator => creator.name).join(", ") || "Inconnu"}</Typography>}
+          </Box>
+
+          {/* Médias */}
+          {movie.videos?.results.length > 0 && (
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="h5" gutterBottom>Médias</Typography>
+              <Swiper spaceBetween={10} slidesPerView={1} navigation modules={[Navigation]} className="disable-select">
+                {movie.videos.results.filter(video => ["Trailer", "Teaser", "Clip"].includes(video.type)).map(video => (
+                  <SwiperSlide key={video.id}>
+                    <iframe width="100%" height="400" src={`https://www.youtube.com/embed/${video.key}`} title={video.name} allowFullScreen></iframe>
+                  </SwiperSlide>
+                ))}
+              </Swiper>
+            </Box>
           )}
 
-          {/* 🔄 Affichage des sous-réponses */}
-          {renderReplies(reply.id, level + 1)}
-        </div>
-      ))}
-    </div>
-  );
-};
+          {/* Casting */}
+          {movie.credits?.cast?.length > 0 && (
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="h5" gutterBottom>Casting</Typography>
+              <Swiper spaceBetween={10} slidesPerView={5} navigation modules={[Navigation]} className="disable-select">
+                {movie.credits.cast.slice(0, 10).map(actor => (
+                  <SwiperSlide key={actor.id}>
+                    <a href={`https://www.google.com/search?q=${actor.name}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', color: 'inherit' }}>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <Avatar src={actor.profile_path ? `https://image.tmdb.org/t/p/w185${actor.profile_path}` : "/default-actor.png"} sx={{ width: 110, height: 110 }} />
+                        <Typography variant="body2" sx={{ textAlign: "center", mt: 1 }}>{actor.name}</Typography>
+                      </Box>
+                    </a>
+                  </SwiperSlide>
+                ))}
+              </Swiper>
+            </Box>
+          )}
 
-  return (
-    <div className="bg-gray-900 text-white min-h-screen p-6 pt-20">
-      <div className="max-w-5xl mx-auto grid md:grid-cols-3 gap-6">
-        {/* 🖼️ Affiche */}
-        <div className="md:col-span-1">
-          <img
-            src={movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : "https://via.placeholder.com/500x750?text=Image+indisponible"}
-            alt={movie.title || movie.name}
-            className="rounded-lg w-full shadow-lg"
-          />
-              <div className="flex justify-between items-center mt-4">
-              {isAuthenticated && (
-              <button
-        onClick={() => addToWatchlist(movie)}
-        className="bg-blue-600 hover:bg-blue-700 text-black w-100 px-3 py-1 rounded-lg text-sm font-medium transition"
-      >
-        Ajouter à la Watchlist
-      </button>
-              )}
-    </div>
-        </div>
+          {/* Recommandations */}
+          {recommendations.length > 0 && (
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="h5" gutterBottom>Recommandations</Typography>
+              <Swiper spaceBetween={10} slidesPerView={4} navigation modules={[Navigation]} className="disable-select">
+                {recommendations.map(rec => (
+                  <SwiperSlide key={rec.id}>
+                    <Link to={`/${rec.media_type || type}/${rec.id}`}>
+                      <img src={rec.poster_path ? `https://image.tmdb.org/t/p/w500${rec.poster_path}` : "/default-movie.png"} alt={rec.title || rec.name} style={{ width: "100%", borderRadius: 8 }} />
+                    </Link>
+                  </SwiperSlide>
+                ))}
+              </Swiper>
+            </Box>
+          )}
 
+          {/* Avis */}
+          <Box sx={{ mt: 6 }}>
+            <Typography variant="h5" gutterBottom>Avis et commentaires</Typography>
+            <Divider sx={{ mb: 3 }} />
 
-        {/* 🎥 Infos principales */}
-        <div className="md:col-span-2 space-y-4">
-          <h1 className="text-4xl font-bold">{movie.title || movie.name}</h1>
-          <p className="text-gray-400 italic">{movie.tagline || "Aucune tagline"}</p>
-          <p className="mt-2 text-gray-300">{movie.overview || "Aucun synopsis disponible"}</p>
-          
-          {/* 📊 Détails */}
-          <div className="grid grid-cols-2 gap-4 text-gray-300">
-            <p><strong>⭐ IMDb :</strong> {movie.vote_average ? movie.vote_average.toFixed(1) + "/10" : "N/A"}</p>
-            {movie.flixmatchRating && (
-              <p className="mt-2 text-lg font-semibold">
-                ⭐ Note FlixMatch : {movie.flixmatchRating}/5 ({movie.reviews.length} avis)
-              </p>
+            {reviews.length > 0 ? (
+              reviews.map((review) => (
+                <Paper key={review.id} sx={{ p: 3, mb: 3, bgcolor: 'background.paper', borderRadius: 2 }}>
+                  <Typography variant="subtitle1">
+                    <strong>{review.user?.email || "Utilisateur inconnu"}</strong>
+                  </Typography>
+                  {review.rating && (
+                    <Rating value={review.rating} readOnly size="small" />
+                  )}
+                  <Typography variant="body1" paragraph>{review.comment}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {new Date(review.createdAt).toLocaleDateString()}
+                  </Typography>
+
+                  {/* Affichage des réponses */}
+                  {renderReplies(review.id)}
+
+                  {/* Formulaire pour répondre à un avis */}
+                  {isAuthenticated && (
+                    <Box sx={{ mt: 2 }}>
+                      <Button
+                        size="small"
+                        onClick={() => setShowReplyInput(prev => ({ ...prev, [review.id]: !prev[review.id] }))}
+                        color="primary"
+                      >
+                        {showReplyInput[review.id] ? "Annuler" : "Répondre"}
+                      </Button>
+
+                      {showReplyInput[review.id] && (
+                        <Box sx={{ mt: 2 }}>
+                          <TextField
+                            value={replyInputs[review.id] || ""}
+                            onChange={(e) => setReplyInputs(prev => ({ ...prev, [review.id]: e.target.value }))}
+                            fullWidth
+                            multiline
+                            rows={3}
+                            placeholder="Votre réponse..."
+                            variant="outlined"
+                            sx={{ mb: 2 }}
+                          />
+                          <Button
+                            onClick={() => submitReply(review.id)}
+                            variant="contained"
+                            color="primary"
+                            endIcon={<SendIcon />}
+                          >
+                            Envoyer
+                          </Button>
+                        </Box>
+                      )}
+                    </Box>
+                  )}
+                </Paper>
+              ))
+            ) : (
+              <Typography variant="body1" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+                Aucun avis pour le moment.
+              </Typography>
             )}
-            <p><strong>⏳ Durée :</strong> {movie.runtime ? movie.runtime + " min" : "Variable"}</p>
-
-          {/* 🎬 Budget et Recette - UNIQUEMENT pour les films */}
-            {type === "movie" && (
-            <>
-              <p><strong>💰 Budget :</strong> {movie.budget ? movie.budget.toLocaleString() + " $" : "Inconnu"}</p>
-              <p><strong>🎬 Recette :</strong> {movie.revenue ? movie.revenue.toLocaleString() + " $" : "Inconnu"}</p>
-            </>
-            )}
-
-          {/* 🎥 Réalisateur pour un FILM - Creator pour une SÉRIE */}
-          <p>
-            <strong>{type === "movie" ? "🎥 Réalisateur" : "🎥 Créateur(s)"} : </strong>  
-              {type === "movie"
-                ? movie.credits?.crew.filter(person => person.job === "Director").map(director => director.name).join(", ") || "Inconnu"
-                : movie.created_by?.map(creator => creator.name).join(", ") || "Inconnu"}
-          </p>
-          <p><strong>
-    📅 Année de sortie : </strong>{new Date(movie.release_date || movie.first_air_date).getFullYear()}
-
-          </p>
-        </div>
-
-          {/* 📌 Genres */}
-          <p className="mt-2"><strong>📌 Genres :</strong> {movie.genres?.map(g => g.name).join(", ") || "Inconnu"}</p>
-
-   {/* 📺 Où regarder */}
-{movie["watch/providers"]?.results?.FR?.flatrate ? (
-  <div className="mt-4">
-    <h2 className="text-xl font-semibold">📺 Où regarder :</h2>
-    <div className="flex space-x-4 mt-2">
-      {movie["watch/providers"].results.FR.flatrate.map(provider => (
-        <a 
-          key={provider.provider_id} 
-          href={getProviderLink(provider, movie)}
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="flex flex-col items-center"
-        >
-          <img 
-            src={`https://image.tmdb.org/t/p/w92${provider.logo_path}`} 
-            alt={provider.provider_name} 
-            className="w-16 h-16 rounded-lg shadow-md hover:scale-105 transition"
-          />
-          <p className="text-sm text-center text-gray-300">{provider.provider_name}</p>
-        </a>
-      ))}
-    </div>
-  </div>
-) : (
-  <div className="mt-4">
-    <h2 className="text-xl font-semibold">📺 Où regarder :</h2>
-    <a 
-      href={`https://www.google.com/search?q=${encodeURIComponent(movie.title || movie.name)} streaming`}
-      target="_blank" 
-      rel="noopener noreferrer"
-      className="text-blue-400 hover:underline block"
-    >
-      🔍 Rechercher sur Google
-    </a>
-  </div>
-)}
-
-        </div>
-      </div>
-
-      {/* 🎭 Casting - FIXÉ POUR ÉVITER LES SCROLLBARS */}
-      <div className="mt-10 max-w-5xl mx-auto">
-        <h2 className="text-2xl font-semibold">🎭 Acteurs principaux :</h2>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-6 mt-3">
-          {movie.credits?.cast.slice(0, 10).map(actor => (
-            <a key={actor.id} href={`https://www.google.com/search?q=${actor.name}`} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center">
-              <img src={actor.profile_path ? `https://image.tmdb.org/t/p/w185${actor.profile_path}` : "https://via.placeholder.com/185x185?text=?"} alt={actor.name} className="w-28 h-auto rounded-full shadow-md hover:scale-110 transition" />
-              <p className="text-sm text-blue-400 mt-2 text-center">{actor.name}</p>
-            </a>
-          ))}
-        </div>
-      </div>
-
-      {/* 🎥 Bandes-annonces & vidéos */}
-      {movie.videos?.results.length > 0 && (
-        <div className="mt-10 max-w-5xl mx-auto">
-          <h2 className="text-2xl font-semibold">🎥 Bandes-annonces & Extraits :</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-            {movie.videos.results
-              .filter(video => ["Trailer", "Teaser", "Clip"].includes(video.type))
-              .slice(0, 4)
-              .map(video => (
-                <iframe
-                  key={video.id}
-                  width="100%"
-                  height="250"
-                  src={`https://www.youtube.com/embed/${video.key}`}
-                  title={video.name}
-                  allowFullScreen
-                  className="rounded-lg shadow-lg"
-                ></iframe>
-              ))}
-          </div>
-        </div>
-      )}
-
-      {/* 🖼️ Galerie d'images */}
-      {movie.images?.backdrops.length > 0 && (
-        <div className="mt-10 max-w-5xl mx-auto">
-          <h2 className="text-2xl font-semibold">🖼️ Galerie :</h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
-            {movie.images.backdrops.slice(0, 6).map((img, index) => (
-              <img key={index} src={`https://image.tmdb.org/t/p/w500${img.file_path}`} alt="Image du film" className="rounded-lg shadow-md hover:scale-105 transition" />
-            ))}
-          </div>
-        </div>
-      )}
-
-{/* 🔥 Recommandations avec Swiper */}
-{recommendations.length > 0 && (
-  <div className="mt-10 max-w-5xl mx-auto">
-    <h2 className="text-2xl font-semibold mb-4">🎯 Recommandations :</h2>
-    <Swiper
-      spaceBetween={10}
-      slidesPerView={2}
-      navigation={true}
-      modules={[Navigation]}
-      breakpoints={{
-        640: { slidesPerView: 2 },
-        768: { slidesPerView: 3 },
-        1024: { slidesPerView: 4 },
-      }}
-      className="mySwiper"
-    >
-      {recommendations.map((rec) => (
-        <SwiperSlide key={rec.id}>
-          <div className="bg-gray-800 text-white p-4 rounded-lg">
-            <Link to={`/${rec.media_type || type}/${rec.id}`} className="block hover:opacity-75">
-              <img
-                src={rec.poster_path ? `https://image.tmdb.org/t/p/w500${rec.poster_path}` : "https://via.placeholder.com/500x750?text=Image+indisponible"}
-                alt={rec.title || rec.name}
-                className="rounded-lg w-full"
-              />
-              <h3 className="text-lg font-bold mt-2 text-center">{rec.title || rec.name}</h3>
-            </Link>
-
-            {isAuthenticated && (
-            <button
-              onClick={() => addToWatchlist(rec)}
-              className="mt-2 bg-blue-500 hover:bg-blue-700 text-black px-4 py-2 rounded-lg w-full"
-            >
-              Ajouter à Watchlist
-            </button>
-            )}
-          </div>
-        </SwiperSlide>
-      ))}
-    </Swiper>
-  </div>
-)}
-{/* 📝 Section des Avis */}
-<div className="mt-6">
-  <h2 className="text-xl font-semibold">📝 Avis des utilisateurs :</h2>
-  <div className="mt-3 space-y-4">
-    {reviews.length > 0 ? (
-      reviews
-        .filter((review) => !review.parentId) // 🔥 On n'affiche que les avis principaux
-        .map((review) => (
-          <div key={review.id} className="bg-gray-800 p-4 rounded-lg">
-            <p className="text-sm text-gray-300">
-              <strong>{review.user.email || "Utilisateur inconnu"}</strong> - ⭐ {review.rating}/5
-            </p>
-            <p className="mt-1">{review.comment}</p>
-
-            {/* 📩 Répondre à l'avis */}
-            {isAuthenticated && (
-              <div className="mt-3">
-                <button
-                  onClick={() => setReplyInputs((prev) => ({ ...prev, [review.id]: !prev[review.id] }))}
-                  className="bg-gray-600 text-white px-3 py-1 rounded"
-                >
-                  {replyInputs[review.id] ? "Annuler" : "Répondre"}
-                </button>
-
-                {replyInputs[review.id] && (
-                  <div className="mt-2">
-                    <textarea
-                      value={replyInputs[review.id] || ""}
-                      onChange={(e) => setReplyInputs((prev) => ({ ...prev, [review.id]: e.target.value }))}
-                      className="w-full p-2 rounded bg-gray-600 text-white"
-                      rows="2"
-                      placeholder="Répondre à cet avis..."
-                    />
-                    <button
-                      onClick={() => submitReply(review.id)}
-                      className="mt-2 bg-blue-500 hover:bg-blue-700 text-black px-4 py-2 rounded-lg w-full"
-                    >
-                      Envoyer la réponse 🚀
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* 🔄 Affichage des réponses */}
-            {renderReplies(review.id)}
-          </div>
-        ))
-    ) : (
-      <p className="mt-6 text-gray-400">Aucun avis pour l'instant.</p>
-    )}
-  </div>
-</div>
-      {/* 🔙 Bouton retour */}
-      <div className="mt-10 max-w-5xl mx-auto text-center">
-        <a href="/" className="bg-blue-500 hover:bg-blue-700 px-6 py-3 rounded-lg text-black font-semibold shadow-md transition">🔙 Retour à l'accueil</a>
-      </div>
-    </div>
+          </Box>
+        </Grid>
+      </Grid>
+    </Container>
   );
 }
 

@@ -63,7 +63,7 @@ function AdvancedSearch() {
 
         <select name="genre" className="p-2 rounded border-1 border-white text-white" onChange={handleFilterChange}>
           <option value="">🎭 Genre</option>
-          {genres.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+          {genres.map((g) => <option className="text-black" key={g.id} value={g.id}>{g.name}</option>)}
         </select>
 
         <input type="number" name="year" placeholder="📅 Année" className="p-2 rounded border-1 border-white text-white"

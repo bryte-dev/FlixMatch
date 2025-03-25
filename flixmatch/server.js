@@ -36,11 +36,21 @@ const authMiddleware = (req, res, next) => {
   }
 };
 
+app.get("/me", authMiddleware, async (req, res) => {
+  const user = await prisma.user.findUnique({
+    where: { id: req.userId },
+    select: { id: true, email: true, username: true },
+  });
+
+  if (!user) return res.status(404).json({ error: "Utilisateur introuvable" });
+
+  res.json(user);
+});
 
 
 // 🔹 Inscription
 app.post("/register", async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, username } = req.body;
 
   if (!email || !password) {
     return res.status(400).json({ error: "Email et mot de passe requis" });
@@ -50,12 +60,12 @@ app.post("/register", async (req, res) => {
 
   try {
     const user = await prisma.user.create({
-      data: { email, password: hashedPassword },
+      data: { email, username, password: hashedPassword },
     });
 
     res.status(201).json({ message: "Utilisateur créé", userId: user.id });
   } catch (error) {
-    res.status(500).json({ error: "Erreur lors de l'inscription" });
+    res.status(500).json({ error: "Erreur lors de l'inscription", details: error.message });
   }
 });
 
@@ -632,6 +642,30 @@ app.get("/reviews/:reviewId/replies", async (req, res) => {
   }
 });
 
+// Route pour mettre à jour le profil utilisateur
+app.put("/account/update", authMiddleware, async (req, res) => {
+  const { username } = req.body;
+  const userId = req.userId;
+
+  try {
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: { username },
+    });
+
+    res.status(200).json({ 
+      message: "Profil mis à jour avec succès", 
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        username: updatedUser.username
+      }
+    });
+  } catch (error) {
+    console.error("❌ Erreur lors de la mise à jour du profil :", error);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
 
 
 
