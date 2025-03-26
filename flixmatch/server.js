@@ -15,6 +15,8 @@ app.use(cors({ origin: "http://localhost:5173", credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
 
+const PORT = process.env.PORT || 3000;
+
 const JWT_SECRET = process.env.JWT_SECRET || "ultra_secret_key";
 const JWT_EXPIRES_IN = "7d"; // Durée du token
 
@@ -669,4 +671,6 @@ app.put("/account/update", authMiddleware, async (req, res) => {
 
 
 
-app.listen(3000, () => console.log("Serveur en marche sur http://localhost:3000"));
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server is running on http://0.0.0.0:${PORT}`);
+});
