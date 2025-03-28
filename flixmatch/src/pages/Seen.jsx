@@ -7,12 +7,13 @@ function Seen() {
   const [refreshTrigger, setRefreshTrigger] = useState(false);
   const [reviews, setReviews] = useState({});
   const [ratings, setRatings] = useState({});
+  const API_URL = import.meta.env.VITE_API_URL;
 
   // 🔥 Charger la liste des films vus
   useEffect(() => {
     const fetchSeenMovies = async () => {
       try {
-        const res = await axios.get("http://localhost:3000/seen", { withCredentials: true });
+        const res = await axios.get(`${API_URL}/seen`, { withCredentials: true });
         setMovies(res.data);
       } catch (error) {
         console.error("❌ Erreur récupération films vus :", error);
@@ -31,7 +32,7 @@ function Seen() {
 
     try {
       await axios.post(
-        `http://localhost:3000/reviews/${movieId}`,
+        `${API_URL}/reviews/${movieId}`,
         { rating: ratings[movieId] || 3, comment: reviews[movieId] },
         { withCredentials: true }
       );

@@ -4,12 +4,13 @@ import { Link } from "react-router-dom";
 
 function Junk() {
   const [movies, setMovies] = useState([]);
+  const API_URL = import.meta.env.VITE_API_URL;
 
   // Récupère les films marqués comme "JUNK"
   useEffect(() => {
     const fetchJunk = async () => {
       try {
-        const res = await axios.get("http://localhost:3000/junk", { withCredentials: true });
+        const res = await axios.get(`${API_URL}/junk`, { withCredentials: true });
   
         console.log("✅ Données reçues (JUNK) :", res.data);
         if (Array.isArray(res.data)) {
@@ -30,7 +31,7 @@ function Junk() {
   // Fonction pour restaurer un film (mettre son status à WATCHLIST)
   const restoreFromJunk = async (movieId) => {
     try {
-      const response = await axios.put(`http://localhost:3000/junk/${movieId}/restore`);
+      const response = await axios.put(`${API_URL}/junk/${movieId}/restore`);
       // Rafraîchir la liste en retirant le film restauré
       setMovies((prevMovies) => prevMovies.filter((entry) => entry.movie.id !== movieId));
     } catch (error) {

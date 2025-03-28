@@ -26,6 +26,7 @@ const Register = () => {
     severity: "success"
   });
   const navigate = useNavigate();
+  const API_URL = import.meta.env.VITE_API_URL;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -44,7 +45,7 @@ const Register = () => {
     }
   
     try {
-      const response = await axios.post("http://localhost:3000/register", 
+      const response = await axios.post(`${API_URL}/register`, 
         { email, password, username }, 
         { withCredentials: true } // 🔥 Active les cookies si besoin
       );

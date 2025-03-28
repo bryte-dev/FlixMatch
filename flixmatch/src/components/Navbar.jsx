@@ -335,6 +335,8 @@ const Navbar = () => {
   const searchRef = useRef(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mobileMenuRef = useRef(null);
+  const API_URL = import.meta.env.VITE_API_URL;
+
 
   // 🔥 Gérer l'affichage de la navbar selon le scroll
   useEffect(() => {
@@ -359,7 +361,7 @@ const Navbar = () => {
         return;
       }
       try {
-        const response = await axios.get(`http://localhost:3000/tmdb/search/${query}`);
+        const response = await axios.get(`${API_URL}/tmdb/search/${query}`);
         setResults(response.data);
         setShowResults(true);
       } catch (error) {

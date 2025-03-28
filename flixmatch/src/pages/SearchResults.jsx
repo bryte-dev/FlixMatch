@@ -7,12 +7,13 @@ const SearchResults = () => {
   const { query } = useParams();
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
+  const API_URL = import.meta.env.VITE_API_URL;
 
   useEffect(() => {
     const fetchResults = async () => {
       try {
-        console.log("📡 Envoi de la requête à :", `http://localhost:3000/tmdb/search/${query}`);
-        const response = await axios.get(`http://localhost:3000/tmdb/search/${query}`);
+        console.log("📡 Envoi de la requête à :", `${API_URL}/tmdb/search/${query}`);
+        const response = await axios.get(`${API_URL}/tmdb/search/${query}`);
         console.log("✅ Résultats reçus :", response.data);
         setResults(response.data);
         console.log("🆕 Nouveaux résultats dans le state :", results); // 🔥 Test si l’état change

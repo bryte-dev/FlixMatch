@@ -18,14 +18,12 @@ dotenv.config();
 const app = express();
 const prisma = new PrismaClient();
 
-app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? '*' // En production, accepter toutes les origines (à ajuster selon vos besoins)
-    : "http://localhost:5173", // En développement, uniquement localhost
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}) );
+const corsOptions = {
+  origin: 'http://192.168.87.1:5173', // Définir l'origine spécifique
+  credentials: true // Autoriser les cookies et autres informations d'identification
+};
+
+app.use(cors(corsOptions));
 
 app.use(express.json());
 app.use(cookieParser());
@@ -689,24 +687,6 @@ app.put("/account/update", authMiddleware, async (req, res) => {
   }
 });
 
-
-// À la fin du fichier, remplacez la partie serveur statique par :
-if (process.env.NODE_ENV === 'production') {
-  // Servir les fichiers statiques du build
-  app.use(express.static(path.join(__dirname, 'dist')));
-  
-  // Pour toutes les autres requêtes, renvoyer l'index.html
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-  });
-}
-
-
-// Utiliser le port fourni par Railway ou 3000 par défaut
-const PORT = process.env.PORT || 3000;
-
-// Démarrer le serveur en écoutant sur toutes les interfaces
-import os from 'os';
 
 // Utiliser le port fourni par Railway ou 3000 par défaut
 const PORT = process.env.PORT || 3000;

@@ -31,6 +31,7 @@ const Account = () => {
     message: "",
     severity: "success"
   });
+  const API_URL = import.meta.env.VITE_API_URL;
 
   useEffect(() => {
     if (!user) {
@@ -40,7 +41,7 @@ const Account = () => {
 
     const fetchUserData = async () => {
       try {
-        const response = await axios.get("http://localhost:3000/me", { withCredentials: true });
+        const response = await axios.get(`${API_URL}/me`, { withCredentials: true });
         setEmail(response.data.email || "");
         setUsername(response.data.username || "");
         setLoading(false);
@@ -64,7 +65,7 @@ const Account = () => {
 
     try {
       await axios.put(
-        "http://localhost:3000/account/update",
+        `${API_URL}/account/update`,
         { username },
         { withCredentials: true }
       );

@@ -1,6 +1,7 @@
 import { createContext, useState, useEffect } from "react";
 import axios from "axios";
-axios.defaults.baseURL = "http://localhost:3000"; // Assure-toi que l'URL est correcte
+const API_URL = import.meta.env.VITE_API_URL;
+axios.defaults.baseURL = `${API_URL}`; // Assure-toi que l'URL est correcte
 axios.defaults.withCredentials = true; // 🔥 Permet d'envoyer les cookies à chaque requête
 
 export const AuthContext = createContext();
@@ -12,7 +13,7 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const res = await axios.get("http://localhost:3000/me", { withCredentials: true });
+        const res = await axios.get(`${API_URL}/me`, { withCredentials: true });
         setUser(res.data);
       } catch (error) {
         setUser(null);
@@ -25,19 +26,19 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = async (email, password) => {
-    await axios.post("http://localhost:3000/login", { email, password }, { withCredentials: true });
-    const res = await axios.get("http://localhost:3000/me", { withCredentials: true });
+    await axios.post(`${API_URL}/login`, { email, password }, { withCredentials: true });
+    const res = await axios.get(`${API_URL}/me`, { withCredentials: true });
     setUser(res.data);
   };
 
   const logout = async () => {
-    await axios.post("http://localhost:3000/logout", {}, { withCredentials: true });
+    await axios.post(`${API_URL}/logout`, {}, { withCredentials: true });
     setUser(null);
   };
 
   const updateProfile = async (userData) => {
     try {
-      await axios.put("http://localhost:3000/account/update", userData, { withCredentials: true });
+      await axios.put(`${API_URL}/account/update`, userData, { withCredentials: true });
       // Mettre à jour les données utilisateur localement
       setUser(prev => ({ ...prev, ...userData }));
       return true;

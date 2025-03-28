@@ -9,4 +9,8 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  server: {
+    host: '0.0.0.0', // Permet à tous les appareils sur le réseau local d'accéder
+    port: 5173, // Le port sur lequel le serveur écoute
+  },
 })
