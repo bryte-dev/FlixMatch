@@ -47,7 +47,7 @@ function MovieDetail() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const response = await axios.get('http://localhost:3000/auth/check', { withCredentials: true });
+        const response = await axios.get(`${process.env.VITE_API_URL}/auth/check`, { withCredentials: true });
         setIsAuthenticated(response.data.isAuthenticated || true);
       } catch (error) {
         console.error("Erreur vérification authentification:", error);
@@ -62,10 +62,10 @@ function MovieDetail() {
   useEffect(() => {
     const fetchMovieDetails = async () => {
       try {
-        const response = await axios.get(`http://localhost:3000/tmdb/details/${tmdbId}/${type}`);
+        const response = await axios.get(`${process.env.VITE_API_URL}/tmdb/details/${tmdbId}/${type}`);
         setMovie(response.data);
 
-        const recResponse = await axios.get(`http://localhost:3000/tmdb/recommendations/${tmdbId}/${type}`);
+        const recResponse = await axios.get(`${process.env.VITE_API_URL}/tmdb/recommendations/${tmdbId}/${type}`);
         setRecommendations(recResponse.data.results || []);
       } catch (error) {
         console.error("Erreur récupération des détails :", error);
@@ -86,7 +86,7 @@ function MovieDetail() {
       
       try {
         // Vérifier dans la watchlist
-        const watchlistResponse = await axios.get(`http://localhost:3000/watchlist`, 
+        const watchlistResponse = await axios.get(`${process.env.VITE_API_URL}/watchlist`, 
           { withCredentials: true }
         );
         
@@ -108,7 +108,7 @@ function MovieDetail() {
         }
         
         // Vérifier dans les favoris
-        const favoritesResponse = await axios.get(`http://localhost:3000/favorites`, 
+        const favoritesResponse = await axios.get(`${process.env.VITE_API_URL}/favorites`, 
           { withCredentials: true }
         );
         
@@ -138,7 +138,7 @@ function MovieDetail() {
   useEffect(() => {
     const fetchReviews = async () => {
       try {
-        const res = await axios.get(`http://localhost:3000/reviews/${tmdbId}`);
+        const res = await axios.get(`${process.env.VITE_API_URL}/reviews/${tmdbId}`);
         
         if (res.data && Array.isArray(res.data.reviews)) {
           // Filtrer pour ne garder que les avis principaux (sans parentId)
@@ -164,7 +164,7 @@ function MovieDetail() {
     setLoadingReplies(prev => ({ ...prev, [reviewId]: true }));
   
     try {
-      const res = await axios.get(`http://localhost:3000/reviews/${reviewId}/replies`, {
+      const res = await axios.get(`${process.env.VITE_API_URL}/reviews/${reviewId}/replies`, {
         withCredentials: true
       });
   
@@ -195,7 +195,7 @@ function MovieDetail() {
     
     try {
       await axios.post(
-        "http://localhost:3000/watchlist",
+        `${process.env.VITE_API_URL}/watchlist`,
         { 
           tmdb_id: movie.id, 
           title: movie.title || movie.name, 
@@ -224,7 +224,7 @@ function MovieDetail() {
       // Si pas dans la watchlist, on l'ajoute d'abord
       try {
         await axios.post(
-          "http://localhost:3000/watchlist",
+          "${process.env.VITE_API_URL}/watchlist",
           { 
             tmdb_id: movie.id, 
             title: movie.title || movie.name, 
@@ -243,7 +243,7 @@ function MovieDetail() {
     
     try {
       await axios.put(
-        `http://localhost:3000/watchlist/${movie.id}/favorite`,
+        `${process.env.VITE_API_URL}/watchlist/${movie.id}/favorite`,
         { isFavorite: true },
         { withCredentials: true }
       );
@@ -270,7 +270,7 @@ function MovieDetail() {
   
     try {
       const res = await axios.post(
-        `http://localhost:3000/reviews`,
+        `${process.env.VITE_API_URL}/reviews`,
         {
           movieId: movie.id,
           comment: replyInputs[parentReviewId],

@@ -12,7 +12,7 @@ function Seen() {
   useEffect(() => {
     const fetchSeenMovies = async () => {
       try {
-        const res = await axios.get("http://localhost:3000/seen", { withCredentials: true });
+        const res = await axios.get(`${process.env.VITE_API_URL}/seen`, { withCredentials: true });
         setMovies(res.data);
       } catch (error) {
         console.error("❌ Erreur récupération films vus :", error);
@@ -31,7 +31,7 @@ function Seen() {
 
     try {
       await axios.post(
-        `http://localhost:3000/reviews/${movieId}`,
+        `${process.env.VITE_API_URL}/reviews/${movieId}`,
         { rating: ratings[movieId] || 3, comment: reviews[movieId] },
         { withCredentials: true }
       );
@@ -49,7 +49,7 @@ function Seen() {
   // 🔄 Remettre un film en Watchlist
   const restoreToWatchlist = async (movieId) => {
     try {
-      await axios.put(`http://localhost:3000/seen/${movieId}/remove`, {}, { withCredentials: true });
+      await axios.put(`${process.env.VITE_API_URL}/seen/${movieId}/remove`, {}, { withCredentials: true });
       alert("Film remis dans la Watchlist !");
       setRefreshTrigger((prev) => !prev);
     } catch (error) {

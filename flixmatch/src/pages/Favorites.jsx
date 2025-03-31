@@ -12,7 +12,7 @@ function Favorites() {
 
   const fetchFavorites = async () => {
     try {
-      const res = await axios.get("http://localhost:3000/favorites", { withCredentials: true });
+      const res = await axios.get(`${process.env.VITE_API_URL}/favorites`, { withCredentials: true });
       setMovies(res.data);
     } catch (error) {
       console.error("❌ Erreur récupération favoris :", error);
@@ -22,7 +22,7 @@ function Favorites() {
   // 🔥 Supprimer un film des favoris
   const removeFromFavorites = async (movieId) => {
     try {
-      await axios.put(`http://localhost:3000/watchlist/${movieId}/favorite`, { isFavorite: false }, { withCredentials: true });
+      await axios.put(`${process.env.VITE_API_URL}/watchlist/${movieId}/favorite`, { isFavorite: false }, { withCredentials: true });
       setRefreshTrigger((prev) => !prev);
     } catch (error) {
       console.error("❌ Erreur suppression des favoris :", error);

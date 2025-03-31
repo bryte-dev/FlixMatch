@@ -11,7 +11,11 @@ dotenv.config();
 const app = express();
 const prisma = new PrismaClient();
 
-app.use(cors({ origin: "http://localhost:5173", credentials: true }));
+app.use(cors({
+  origin: 'http://157.26.173.53:5173/',
+  credentials: true // Permet d'accepter les cookies et sessions
+}));
+
 app.use(express.json());
 app.use(cookieParser());
 
