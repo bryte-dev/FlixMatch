@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "start": "node server.js",
-    "postinstall": "prisma generate && prisma migrate deploy"
+    "postinstall": "prisma generate --schema=./prisma/schema.prisma && prisma migrate deploy --schema=./prisma/schema.prisma"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
