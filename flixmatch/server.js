@@ -709,8 +709,8 @@ app.get('*', (req, res) => {
 });
 
 // Démarrage du serveur
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+app.listen( () => {
+  console.log(`Server running on port ${process.env.PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV}`);
   console.log(`TMDB API Key is ${process.env.TMDB_API_KEY ? 'defined' : 'NOT defined'}`);
   console.log(`Database URL is ${process.env.DATABASE_URL ? 'defined' : 'NOT defined'}`);
