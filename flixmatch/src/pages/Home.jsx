@@ -14,7 +14,7 @@ function Home() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        await axios.get("http://localhost:3000/me", { withCredentials: true });
+        await axios.get(`${import.meta.env.VITE_BACK_API_URL}/me`, { withCredentials: true });
         setIsAuthenticated(true);
       } catch {
         setIsAuthenticated(false);
@@ -27,8 +27,8 @@ function Home() {
   useEffect(() => {
     const fetchLists = async () => {
       try {
-        const watchlistRes = await axios.get("http://localhost:3000/watchlist", { withCredentials: true });
-        const junklistRes = await axios.get("http://localhost:3000/junk", { withCredentials: true });
+        const watchlistRes = await axios.get(`${import.meta.env.VITE_BACK_API_URL}/watchlist`, { withCredentials: true });
+        const junklistRes = await axios.get(`${import.meta.env.VITE_BACK_API_URL}/junk`, { withCredentials: true });
 
         setWatchlist(watchlistRes.data);
         setJunklist(junklistRes.data);
@@ -89,7 +89,7 @@ function Home() {
     }
 
     try {
-      await axios.post("http://localhost:3000/watchlist", {
+      await axios.post(`${import.meta.env.VITE_BACK_API_URL}/watchlist`, {
         tmdb_id: movie.id,
         title: movie.title || movie.name,
         media_type: movie.media_type,

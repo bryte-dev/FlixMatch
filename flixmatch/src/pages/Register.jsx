@@ -44,7 +44,7 @@ const Register = () => {
     }
   
     try {
-      const response = await axios.post("http://localhost:3000/register", 
+      const response = await axios.post(`${import.meta.env.VITE_BACK_API_URL}/register`, 
         { email, password, username }, 
         { withCredentials: true } // 🔥 Active les cookies si besoin
       );

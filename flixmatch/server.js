@@ -6,12 +6,23 @@ import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import axios from "axios";
+import os from "os"
 
 dotenv.config();
 const app = express();
 const prisma = new PrismaClient();
 
-app.use(cors({ origin: "http://localhost:5173", credentials: true }));
+const allowedOrigins = ["http://192.168.56.1:5173", "http://192.168.0.236:5173"];
+app.use(cors({
+  origin: (origin, callback) => {
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
+}));
 app.use(express.json());
 app.use(cookieParser());
 
@@ -667,6 +678,15 @@ app.put("/account/update", authMiddleware, async (req, res) => {
   }
 });
 
+const PORT = process.env.PORT || 3000;
 
+const nets = os.networkInterfaces();
+for (const name of Object.keys(nets)) {
+  for (const net of nets[name]) {
+    if (net.family === 'IPv4' && !net.internal) {
+      console.log(`Accessible depuis: http://${net.address}:${PORT}`);
+    }
+  }
+}
 
-app.listen(3000, () => console.log("Serveur en marche sur http://localhost:3000"));
+app.listen(3000, () => console.log(`Serveur en marche sur ${process.env.REACT_APP_BACK_API_URL}`));

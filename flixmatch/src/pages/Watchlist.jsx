@@ -7,7 +7,7 @@ function Watchlist() {
   const [refreshTrigger, setRefreshTrigger] = useState(false);
 
   useEffect(() => {
-    axios.get("http://localhost:3000/watchlist", { withCredentials: true })
+    axios.get(`${import.meta.env.VITE_BACK_API_URL}/watchlist`, { withCredentials: true })
       .then(res => {
         console.log("Watchlist récupérée :", res.data);
         
@@ -22,7 +22,7 @@ function Watchlist() {
   const moveToJunk = async (movieId) => {
     try {
       // Send request to move the movie to the junk list
-      await axios.put(`http://localhost:3000/watchlist/${movieId}/junk`);
+      await axios.put(`${import.meta.env.VITE_BACK_API_URL}/watchlist/${movieId}/junk`);
 
       // Immediately update the UI to remove the movie from the watchlist
       setMovies((prevMovies) => prevMovies.filter((movie) => movie.movie.id !== movieId));
@@ -36,7 +36,7 @@ function Watchlist() {
       const newFavoriteStatus = !currentFavorite;
       console.log(`Mise à jour du favori pour ${movieId} -> ${newFavoriteStatus}`);
 
-      await axios.put(`http://localhost:3000/watchlist/${movieId}/favorite`, { isFavorite: newFavoriteStatus });
+      await axios.put(`${import.meta.env.VITE_BACK_API_URL}/watchlist/${movieId}/favorite`, { isFavorite: newFavoriteStatus });
 
       setMovies((prevMovies) => 
         prevMovies.map((entry) => 
@@ -51,7 +51,7 @@ function Watchlist() {
     try {
       console.log("🧐 Envoi de la requête PUT à /watchlist/" + movieId + "/seen");
   
-      await axios.put(`http://localhost:3000/watchlist/${movieId}/seen`, {}, { withCredentials: true });
+      await axios.put(`${import.meta.env.VITE_BACK_API_URL}/watchlist/${movieId}/seen`, {}, { withCredentials: true });
   
       // Supprimer directement le film de l'état local
       setMovies((prevMovies) => prevMovies.filter(movie => movie.movie.id !== movieId));

@@ -19,7 +19,7 @@ function AdvancedSearch() {
   useEffect(() => {
     const fetchGenres = async () => {
       try {
-        const res = await axios.get("http://localhost:3000/tmdb/genres");
+        const res = await axios.get(`${import.meta.env.VITE_BACK_API_URL}/tmdb/genres`);
         setGenres(res.data);
       } catch (error) {
         console.error("Erreur chargement genres :", error);
@@ -33,7 +33,7 @@ function AdvancedSearch() {
     const fetchResults = async () => {
       setLoading(true);
       try {
-        const res = await axios.get("http://localhost:3000/tmdb/advanced-search", {
+        const res = await axios.get(`${import.meta.env.VITE_BACK_API_URL}/tmdb/advanced-search`, {
           params: { ...filters, page },
         });
         setResults(res.data.results || []);

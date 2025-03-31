@@ -359,7 +359,7 @@ const Navbar = () => {
         return;
       }
       try {
-        const response = await axios.get(`http://localhost:3000/tmdb/search/${query}`);
+        const response = await axios.get(`${import.meta.envVITE_BACK_API_URL}/tmdb/search/${query}`);
         setResults(response.data);
         setShowResults(true);
       } catch (error) {

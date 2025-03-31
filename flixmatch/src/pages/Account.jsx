@@ -40,7 +40,7 @@ const Account = () => {
 
     const fetchUserData = async () => {
       try {
-        const response = await axios.get("http://localhost:3000/me", { withCredentials: true });
+        const response = await axios.get(`${import.meta.env.VITE_BACK_API_URL}/me`, { withCredentials: true });
         setEmail(response.data.email || "");
         setUsername(response.data.username || "");
         setLoading(false);
@@ -64,7 +64,7 @@ const Account = () => {
 
     try {
       await axios.put(
-        "http://localhost:3000/account/update",
+        `${import.meta.env.VITE_BACK_API_URL}/account/update`,
         { username },
         { withCredentials: true }
       );
