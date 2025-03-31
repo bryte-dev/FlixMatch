@@ -700,22 +700,19 @@ app.get('/api/health', (req, res) => {
 });
 
 
-// Utiliser le port fourni par Railway ou 3000 par défaut
-const PORT = process.env.PORT || 3000;
-
-// Servir les fichiers statiques du build React
+// Servir les fichiers statiques du build
 app.use(express.static(path.join(__dirname, 'dist')));
-// Servir aussi le dossier public si nécessaire
-app.use('/public', express.static(path.join(__dirname, 'public')));
 
-// Toutes les autres requêtes renvoient vers l'index.html
+// Toutes les autres requêtes renvoient vers l'index.html (pour SPA)
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-
+// Démarrage du serveur
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  console.log(`TMDB API Key exists: ${Boolean(process.env.TMDB_API_KEY)}`);
+  console.log(`Environment: ${process.env.NODE_ENV}`);
+  console.log(`TMDB API Key is ${process.env.TMDB_API_KEY ? 'defined' : 'NOT defined'}`);
+  console.log(`Database URL is ${process.env.DATABASE_URL ? 'defined' : 'NOT defined'}`);
 });
 
