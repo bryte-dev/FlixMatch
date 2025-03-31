@@ -18,12 +18,15 @@ dotenv.config();
 const app = express();
 const prisma = new PrismaClient();
 
-const corsOptions = {
-  origin: 'http://192.168.87.1:5173', // Définir l'origine spécifique
-  credentials: true // Autoriser les cookies et autres informations d'identification
-};
 
-app.use(cors(corsOptions));
+app.use(cors());
+
+app.get('/api/config', (req, res) => {
+  res.json({
+    tmdbApiKey: process.env.TMDB_API_KEY
+  });
+});
+
 
 app.use(express.json());
 app.use(cookieParser());
@@ -687,32 +690,32 @@ app.put("/account/update", authMiddleware, async (req, res) => {
   }
 });
 
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    environment: process.env.NODE_ENV,
+    tmdbKeyExists: Boolean(process.env.TMDB_API_KEY),
+    tmdbKeyPrefix: process.env.TMDB_API_KEY ? `${process.env.TMDB_API_KEY.substring(0, 3)}...` : null
+  });
+});
+
 
 // Utiliser le port fourni par Railway ou 3000 par défaut
 const PORT = process.env.PORT || 3000;
 
+// Servir les fichiers statiques du build React
 app.use(express.static(path.join(__dirname, 'dist')));
+// Servir aussi le dossier public si nécessaire
+app.use('/public', express.static(path.join(__dirname, 'public')));
 
+// Toutes les autres requêtes renvoient vers l'index.html
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-// Démarrer le serveur en écoutant sur toutes les interfaces
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Serveur en marche sur http://localhost:${PORT}`) ;
-  
-  // Afficher l'adresse IP pour accès depuis d'autres appareils
-  try {
-    const nets = os.networkInterfaces();
-    for (const name of Object.keys(nets)) {
-      for (const net of nets[name]) {
-        if (net.family === 'IPv4' && !net.internal) {
-          console.log(`Accessible depuis: http://${net.address}:${PORT}`) ;
-        }
-      }
-    }
-  } catch (error) {
-    console.log("Impossible d'afficher les adresses IP:", error.message);
-  }
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log(`TMDB API Key exists: ${Boolean(process.env.TMDB_API_KEY)}`);
 });
 
