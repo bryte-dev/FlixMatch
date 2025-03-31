@@ -690,15 +690,6 @@ app.put("/account/update", authMiddleware, async (req, res) => {
   }
 });
 
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    environment: process.env.NODE_ENV,
-    tmdbKeyExists: Boolean(process.env.TMDB_API_KEY),
-    tmdbKeyPrefix: process.env.TMDB_API_KEY ? `${process.env.TMDB_API_KEY.substring(0, 3)}...` : null
-  });
-});
-
 
 // Servir les fichiers statiques du build
 app.use(express.static(path.join(__dirname, 'dist')));
@@ -709,7 +700,7 @@ app.get('*', (req, res) => {
 });
 
 // Démarrage du serveur
-app.listen( () => {
+app.listen(() => {
   console.log(`Server running on port ${process.env.PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV}`);
   console.log(`TMDB API Key is ${process.env.TMDB_API_KEY ? 'defined' : 'NOT defined'}`);
