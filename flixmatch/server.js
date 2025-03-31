@@ -691,6 +691,10 @@ app.put("/account/update", authMiddleware, async (req, res) => {
 // Utiliser le port fourni par Railway ou 3000 par défaut
 const PORT = process.env.PORT || 3000;
 
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
+
 // Démarrer le serveur en écoutant sur toutes les interfaces
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Serveur en marche sur http://localhost:${PORT}`) ;
