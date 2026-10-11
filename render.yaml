@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: flixmatch
+    runtime: node
+    plan: free
+    rootDir: flixmatch
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_PUBLIC_URL
+        sync: false
+      - key: TMDB_API_KEY
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true

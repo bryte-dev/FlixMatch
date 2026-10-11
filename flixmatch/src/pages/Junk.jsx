@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { API_URL } from "../api";
 import { Link } from "react-router-dom";
 
 function Junk() {
   const [movies, setMovies] = useState([]);
-  const API_URL = import.meta.env.VITE_API_URL;
 
   // Récupère les films marqués comme "JUNK"
   useEffect(() => {
@@ -31,7 +31,7 @@ function Junk() {
   // Fonction pour restaurer un film (mettre son status à WATCHLIST)
   const restoreFromJunk = async (movieId) => {
     try {
-      const response = await axios.put(`${API_URL}/junk/${movieId}/restore`);
+      const response = await axios.put(`${API_URL}/junk/${movieId}/restore`, {}, { withCredentials: true });
       // Rafraîchir la liste en retirant le film restauré
       setMovies((prevMovies) => prevMovies.filter((entry) => entry.movie.id !== movieId));
     } catch (error) {

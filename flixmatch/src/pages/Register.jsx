@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
+import { API_URL } from "../api";
 import { 
   Container, 
   Typography, 
@@ -26,13 +27,11 @@ const Register = () => {
     severity: "success"
   });
   const navigate = useNavigate();
-  const API_URL = import.meta.env.VITE_API_URL;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
   
-    console.log("🔍 Tentative d'inscription avec :", email, username, password); // 🔥 Debug
     
     if (!email || !password) {
       setSnackbar({

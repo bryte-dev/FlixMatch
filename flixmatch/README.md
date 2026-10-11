@@ -288,8 +288,7 @@ FlixMatch/
 │   │   │   ├── MovieDetail.jsx      Movie or TV show details
 │   │   │   └── AdvancedSearch.jsx  Advanced TMDB search
 │   │   │
-│   │   ├── services/
-│   │   │   └── tmdb.js             TMDB-related frontend helpers
+│   │   ├── api.js                  API base URL (same-origin, or VITE_API_URL)
 │   │   │
 │   │   ├── assets/                 Frontend assets
 │   │   └── styles/                 Global and page styles
@@ -303,7 +302,6 @@ FlixMatch/
 │   ├── server.js                   Express API and production server
 │   ├── package.json                Dependencies and scripts
 │   ├── vite.config.js              Vite configuration
-│   ├── railway.json                Railway deployment configuration
 │   ├── Procfile                    Process start command
 │   └── index.html                  Vite HTML entry point
 │
@@ -553,7 +551,8 @@ PUT /junk/:movieId/restore
 ### TMDB Proxy Routes
 
 ```http
-GET /api/config
+GET /health
+GET /tmdb/trending
 GET /tmdb/search/:query
 GET /tmdb/details/:tmdbId/:type
 GET /tmdb/recommendations/:tmdbId/:type
@@ -1057,16 +1056,9 @@ Applies existing production migrations.
 
 ## Deployment
 
-The repository contains configuration for Railway.
+The repository contains a `render.yaml` Blueprint (Render free plan + Neon PostgreSQL; see the root README).
 
-The Railway configuration uses:
-
-```json
-{
-  "buildCommand": "npm run build",
-  "startCommand": "npm run start"
-}
-```
+Build: `npm install && npm run build` — Start: `npm start`.
 
 A deployment environment must provide at least:
 

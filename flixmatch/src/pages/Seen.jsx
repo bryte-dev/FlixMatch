@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { API_URL } from "../api";
 import { Link } from "react-router-dom";
 
 function Seen() {
@@ -7,7 +8,6 @@ function Seen() {
   const [refreshTrigger, setRefreshTrigger] = useState(false);
   const [reviews, setReviews] = useState({});
   const [ratings, setRatings] = useState({});
-  const API_URL = import.meta.env.VITE_API_URL;
 
   // 🔥 Charger la liste des films vus
   useEffect(() => {
@@ -50,7 +50,7 @@ function Seen() {
   // 🔄 Remettre un film en Watchlist
   const restoreToWatchlist = async (movieId) => {
     try {
-      await axios.put(`http://localhost:3000/seen/${movieId}/remove`, {}, { withCredentials: true });
+      await axios.put(`${API_URL}/seen/${movieId}/remove`, {}, { withCredentials: true });
       alert("Film remis dans la Watchlist !");
       setRefreshTrigger((prev) => !prev);
     } catch (error) {
@@ -115,7 +115,7 @@ function Seen() {
                   onClick={() => submitReview(entry.movie.id)}
                   className="mt-2 bg-blue-500 hover:bg-blue-700 text-black px-4 py-2 rounded-lg w-full"
                 >
-                  Poster l'avis
+                  Poster l&apos;avis
                 </button>
               </div>
 
