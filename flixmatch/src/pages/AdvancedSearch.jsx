@@ -1,106 +1,116 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { API_URL } from "../api";
-import { Link } from "react-router-dom";
+import MediaCard from "../components/MediaCard";
+import { Button, EmptyState, ErrorState, GridSkeleton, MediaGrid, PageHeader } from "../components/ui";
+import { mediaTitle, mediaYear, posterUrl } from "../utils";
+
+const EMPTY_FILTERS = { query: "", genre: "", year: "", minRating: "", maxDuration: "" };
+
+const Field = ({ label, children }) => (
+  <label className="block text-sm font-medium text-zinc-300">
+    <span className="mb-1 block">{label}</span>
+    {children}
+  </label>
+);
 
 function AdvancedSearch() {
   const [genres, setGenres] = useState([]);
-  const [filters, setFilters] = useState({
-    query: "",
-    genre: "",
-    year: "",
-    minRating: "",
-    maxDuration: "",
-  });
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [debounced, setDebounced] = useState(EMPTY_FILTERS);
   const [results, setResults] = useState([]);
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(false);
-  
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
-  // 🔥 Charger les genres depuis TMDB
   useEffect(() => {
-    const fetchGenres = async () => {
-      try {
-        const res = await axios.get(`${API_URL}/tmdb/genres`);
-        setGenres(res.data);
-      } catch (error) {
-        console.error("Erreur chargement genres :", error);
-      }
-    };
-    fetchGenres();
+    axios
+      .get(`${API_URL}/tmdb/genres`)
+      .then((res) => setGenres(res.data))
+      .catch((err) => console.error("Erreur chargement genres :", err));
   }, []);
 
-  // 🔎 Requête TMDB selon les filtres
+  // Évite une requête à chaque frappe
   useEffect(() => {
-    const fetchResults = async () => {
-      setLoading(true);
-      try {
-        const res = await axios.get(`${API_URL}/tmdb/advanced-search`, {
-          params: { ...filters, page },
-        });
-        setResults(res.data.results || []);
-      } catch (error) {
-        console.error("Erreur recherche avancée :", error);
-      } finally {
-        setLoading(false);
-      }
+    const timer = setTimeout(() => {
+      setDebounced(filters);
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [filters]);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError(false);
+    axios
+      .get(`${API_URL}/tmdb/advanced-search`, { params: { ...debounced, page } })
+      .then((res) => active && setResults(res.data.results || []))
+      .catch((err) => {
+        console.error("Erreur recherche avancée :", err);
+        if (active) {
+          setResults([]);
+          setError(true);
+        }
+      })
+      .finally(() => active && setLoading(false));
+    return () => {
+      active = false;
     };
+  }, [debounced, page]);
 
-    fetchResults();
-  }, [filters, page]);
-
-  // 🛠️ Gérer les changements de filtres
-  const handleFilterChange = (e) => {
-    setFilters({ ...filters, [e.target.name]: e.target.value });
-  };
+  const handleFilterChange = (e) => setFilters((prev) => ({ ...prev, [e.target.name]: e.target.value }));
 
   return (
-    <div className="bg-gray-900 text-white min-h-screen p-6">
-      <h1 className="text-3xl font-bold text-center mb-6">🔎 Recherche Avancée</h1>
+    <div className="page">
+      <PageHeader title="Recherche avancée" subtitle="Filtre les films par genre, année, note et durée." />
 
-      {/* 🎛️ Filtres */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
-        <input type="text" name="query" placeholder="Titre / Acteur / Réalisateur"
-          className="p-2 rounded border-1 border-white text-white" value={filters.query} onChange={handleFilterChange} />
+      <form className="surface mb-8 grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 lg:grid-cols-5" onSubmit={(e) => e.preventDefault()}>
+        <Field label="Titre">
+          <input type="text" name="query" placeholder="Titre d'un film" className="field" value={filters.query} onChange={handleFilterChange} />
+        </Field>
+        <Field label="Genre">
+          <select name="genre" className="field" value={filters.genre} onChange={handleFilterChange}>
+            <option value="">Tous les genres</option>
+            {genres.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Année">
+          <input type="number" name="year" min="1900" max="2100" placeholder="ex. 2020" className="field" value={filters.year} onChange={handleFilterChange} />
+        </Field>
+        <Field label="Note minimale (0-10)">
+          <input type="number" name="minRating" min="0" max="10" step="0.5" placeholder="ex. 7" className="field" value={filters.minRating} onChange={handleFilterChange} />
+        </Field>
+        <Field label="Durée max (min)">
+          <input type="number" name="maxDuration" min="0" max="1000" placeholder="ex. 120" className="field" value={filters.maxDuration} onChange={handleFilterChange} />
+        </Field>
+      </form>
 
-        <select name="genre" className="p-2 rounded border-1 border-white text-white" onChange={handleFilterChange}>
-          <option value="">🎭 Genre</option>
-          {genres.map((g) => <option className="text-black" key={g.id} value={g.id}>{g.name}</option>)}
-        </select>
+      {loading ? (
+        <GridSkeleton />
+      ) : error ? (
+        <ErrorState message="Les filtres sont invalides ou TMDB est indisponible." onRetry={() => setFilters({ ...filters })} />
+      ) : results.length === 0 ? (
+        <EmptyState icon="🔎" title="Aucun résultat" text="Assouplis tes filtres pour élargir la recherche." />
+      ) : (
+        <MediaGrid>
+          {results.map((item) => (
+            <MediaCard
+              key={item.id}
+              to={`/movie/${item.id}`}
+              title={mediaTitle(item)}
+              poster={posterUrl(item.poster_path)}
+              subtitle={["Film", mediaYear(item)].filter(Boolean).join(" · ")}
+              badge={item.vote_average ? `★ ${item.vote_average.toFixed(1)}` : null}
+            />
+          ))}
+        </MediaGrid>
+      )}
 
-        <input type="number" name="year" placeholder="📅 Année" className="p-2 rounded border-1 border-white text-white"
-          value={filters.year} onChange={handleFilterChange} />
-
-        <input type="number" name="minRating" placeholder="⭐ Note Min (1-10)"
-          className="p-2 border-1 border-white rounded text-white" value={filters.minRating} onChange={handleFilterChange} />
-
-        <input type="number" name="maxDuration" placeholder="⏳ Durée Max (min)" className="p-2 rounded border-1 border-white text-white"
-          value={filters.maxDuration} onChange={handleFilterChange} />
-      </div>
-
-      {/* 🔄 Chargement */}
-      {loading && <p className="text-center text-white">⏳ Chargement des résultats...</p>}
-
-      {/* 🎥 Résultats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {results.map((item) => (
-          <Link  key={item.id} to={`/${item.media_type || "movie"}/${item.id}`} 
-            className="bg-gray-800 text-white p-4 rounded-lg block hover:opacity-75">
-            <img src={item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}`
-              : "https://via.placeholder.com/500x750?text=Pas+d'image"} alt={item.title || item.name}
-              className="rounded-lg w-full" />
-            <h2 className="text-lg font-bold mt-2 text-center">{item.title || item.name}</h2>
-          </Link>
-        ))}
-      </div>
-
-      {/* 📜 Pagination */}
-      <div className="flex justify-center mt-6">
-        <button className="bg-blue-500 hover:bg-blue-700 px-4 py-2 text-black rounded mr-2"
-          onClick={() => setPage((prev) => Math.max(prev - 1, 1))} disabled={page === 1}>⬅️ Précédent</button>
-
-        <button className="bg-blue-500 hover:bg-blue-700 px-4 py-2 text-black rounded"
-          onClick={() => setPage((prev) => prev + 1)}>Suivant ➡️</button>
+      <div className="mt-8 flex items-center justify-center gap-3">
+        <Button onClick={() => setPage((p) => Math.max(p - 1, 1))} disabled={page === 1 || loading}>← Précédent</Button>
+        <span className="text-sm text-zinc-400" aria-live="polite">Page {page}</span>
+        <Button onClick={() => setPage((p) => p + 1)} disabled={loading || results.length === 0}>Suivant →</Button>
       </div>
     </div>
   );

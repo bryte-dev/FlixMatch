@@ -1,127 +1,50 @@
 import { useState, useContext } from "react";
 import { AuthContext } from "../AuthContext";
 import { Link, useNavigate } from "react-router-dom";
-import { 
-  Container, 
-  Typography, 
-  TextField, 
-  Button, 
-  Paper, 
-  Box, 
-  Avatar,
-  CircularProgress,
-  Alert,
-  Snackbar
-} from '@mui/material';
-import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import AuthCard, { FormField } from "../components/AuthCard";
+import { Button } from "../components/ui";
+import { useToast } from "../toastContext";
+import { errorMessage } from "../utils";
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: "",
-    severity: "error"
-  });
+  const [error, setError] = useState("");
   const { login } = useContext(AuthContext);
   const navigate = useNavigate();
+  const toast = useToast();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
-    
+    setError("");
+
     try {
       await login(email, password);
+      toast("Content de te revoir !", "success");
       navigate("/");
-    } catch (error) {
-      console.error("Erreur de connexion", error);
-      setSnackbar({
-        open: true,
-        message: "Échec de la connexion. Vérifiez vos identifiants.",
-        severity: "error"
-      });
+    } catch (err) {
+      console.error("Erreur de connexion", err);
+      setError(errorMessage(err, "Échec de la connexion. Vérifie tes identifiants."));
       setLoading(false);
     }
   };
 
-  const handleCloseSnackbar = () => {
-    setSnackbar({ ...snackbar, open: false });
-  };
-
   return (
-    <Container maxWidth="sm" sx={{ mt: 12 }}>
-      <Paper elevation={3} sx={{ p: 4, borderRadius: 2 }}>
-        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 3 }}>
-          <Avatar sx={{ m: 1, bgcolor: 'primary.main', width: 56, height: 56 }}>
-            <LockOutlinedIcon fontSize="large" />
-          </Avatar>
-          <Typography component="h1" variant="h5" sx={{ mt: 2 }}>
-            Connexion
-          </Typography>
-        </Box>
-
-        <form onSubmit={handleSubmit}>
-          <TextField
-            margin="normal"
-            required
-            fullWidth
-            label="Email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            variant="outlined"
-            sx={{ mb: 2 }}
-          />
-          
-          <TextField
-            margin="normal"
-            required
-            fullWidth
-            label="Mot de passe"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            variant="outlined"
-            sx={{ mb: 3 }}
-          />
-          
-          <Button
-            type="submit"
-            fullWidth
-            variant="contained"
-            color="primary"
-            disabled={loading}
-            startIcon={loading ? <CircularProgress size={24} color="inherit" /> : null}
-            sx={{ py: 1.5 }}
-          >
-            {loading ? "Connexion en cours..." : "Se connecter"}
-          </Button>
-          
-          <Box sx={{ mt: 3, textAlign: 'center' }}>
-            <Typography variant="body2">
-              Pas encore de compte ? <Link to="/register" style={{ color: '#4caf50', textDecoration: 'none' }}>Créer un compte</Link>
-            </Typography>
-          </Box>
-        </form>
-      </Paper>
-
-      <Snackbar 
-        open={snackbar.open} 
-        autoHideDuration={6000} 
-        onClose={handleCloseSnackbar}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert 
-          onClose={handleCloseSnackbar} 
-          severity={snackbar.severity}
-          variant="filled"
-          sx={{ width: '100%' }}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
-    </Container>
+    <AuthCard
+      title="Connexion"
+      subtitle="Retrouve ta watchlist et tes séries en cours."
+      footer={<>Pas encore de compte ? <Link to="/register" className="font-semibold text-brand-300 hover:underline">S&apos;inscrire</Link></>}
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <FormField id="email" label="Email" type="email" autoComplete="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
+        <FormField id="password" label="Mot de passe" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+        {error && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>}
+        <Button type="submit" variant="primary" className="w-full" pending={loading} pendingLabel="Connexion…">Se connecter</Button>
+      </form>
+    </AuthCard>
   );
 };
 

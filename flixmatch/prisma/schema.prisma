@@ -14,6 +14,7 @@ model User {
   password String
   watchlist Watchlist[]
   reviews  Review[]  // 🔥 Un utilisateur peut écrire plusieurs reviews
+  episodeWatches EpisodeWatch[]
 }
 
 model Movie {
@@ -54,6 +55,24 @@ model Review {
   parentId   Int?      
   parent     Review?   @relation(name: "ReviewReplies", fields: [parentId], references: [id])
   replies    Review[]  @relation(name: "ReviewReplies")
+}
+
+// Suivi des épisodes de séries TV vus par un utilisateur (un enregistrement = un épisode vu)
+model EpisodeWatch {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  tmdbSeriesId  Int
+  seasonNumber  Int
+  episodeNumber Int
+  tmdbEpisodeId Int?
+  name          String?
+  runtime       Int?
+  watchedAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tmdbSeriesId, seasonNumber, episodeNumber])
+  @@index([userId, tmdbSeriesId])
 }
 
 enum WatchlistStatus {

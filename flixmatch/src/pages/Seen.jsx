@@ -1,136 +1,156 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import axios from "axios";
-import { API_URL } from "../api";
 import { Link } from "react-router-dom";
+import { FiRotateCcw } from "react-icons/fi";
+import { API_URL } from "../api";
+import { useToast } from "../toastContext";
+import useBusy from "../hooks/useBusy";
+import useLibrary, { useEpisodeCounts } from "../hooks/useLibrary";
+import LibraryView from "../components/LibraryView";
+import { Button, StarRating } from "../components/ui";
+import { errorMessage, posterUrl } from "../utils";
 
 function Seen() {
-  const [movies, setMovies] = useState([]);
-  const [refreshTrigger, setRefreshTrigger] = useState(false);
-  const [reviews, setReviews] = useState({});
-  const [ratings, setRatings] = useState({});
+  const library = useLibrary("/seen");
+  const episodeCounts = useEpisodeCounts();
+  const toast = useToast();
+  const { isBusy, run } = useBusy();
+  const [drafts, setDrafts] = useState({});
+  const [openForm, setOpenForm] = useState(null);
 
-  // 🔥 Charger la liste des films vus
-  useEffect(() => {
-    const fetchSeenMovies = async () => {
+  const draftOf = (id) => drafts[id] || { rating: 0, comment: "" };
+  const setDraft = (id, patch) => setDrafts((prev) => ({ ...prev, [id]: { ...draftOf(id), ...patch } }));
+
+  const rate = (movie, rating) =>
+    run(`rate-${movie.id}`, async () => {
       try {
-        const res = await axios.get(`${API_URL}/seen`, { withCredentials: true });
-        setMovies(res.data);
-      } catch (error) {
-        console.error("❌ Erreur récupération films vus :", error);
+        await axios.put(`${API_URL}/seen/${movie.id}/rating`, { rating });
+        library.patchEntry(movie.id, { rating });
+        toast("Note enregistrée", "success");
+      } catch (err) {
+        toast(errorMessage(err, "Impossible d'enregistrer la note"), "error");
       }
-    };
+    });
 
-    fetchSeenMovies();
-  }, [refreshTrigger]);
-
-  // 🔥 Soumettre un avis pour un film spécifique
-  const submitReview = async (movieId) => {
-    if (!reviews[movieId]) {
-      alert("Écris un avis avant de poster !");
-      return;
-    }
-
-    try {
-      await axios.post(
-        `${API_URL}/reviews/${movieId}`,
-        { rating: ratings[movieId] || 3, comment: reviews[movieId] },
-        { withCredentials: true }
-      );
-
-      alert("Avis posté !");
-      setReviews((prev) => ({ ...prev, [movieId]: "" }));
-      setRatings((prev) => ({ ...prev, [movieId]: 3 }));
-      setRefreshTrigger((prev) => !prev);
-    } catch (error) {
-      console.error("❌ Erreur lors de l'envoi de l'avis :", error);
-      alert("Impossible de poster l'avis !");
-    }
+  const submitReview = (movie) => {
+    const { rating, comment } = draftOf(movie.id);
+    if (!rating) return toast("Choisis une note avant de publier ton avis", "error");
+    if (!comment.trim()) return toast("Écris un avis avant de le publier", "error");
+    return run(`review-${movie.id}`, async () => {
+      try {
+        await axios.post(`${API_URL}/reviews/${movie.id}`, { rating, comment: comment.trim() });
+        library.patchEntry(movie.id, { rating });
+        setDrafts((prev) => ({ ...prev, [movie.id]: { rating: 0, comment: "" } }));
+        setOpenForm(null);
+        toast("Avis publié — retrouve-le sur la fiche du titre", "success");
+      } catch (err) {
+        toast(errorMessage(err, "Impossible de publier l'avis"), "error");
+      }
+    });
   };
 
-  // 🔄 Remettre un film en Watchlist
-  const restoreToWatchlist = async (movieId) => {
-    try {
-      await axios.put(`${API_URL}/seen/${movieId}/remove`, {}, { withCredentials: true });
-      alert("Film remis dans la Watchlist !");
-      setRefreshTrigger((prev) => !prev);
-    } catch (error) {
-      console.error("❌ Erreur lors du retour en Watchlist :", error);
-      alert("Impossible de remettre ce film en Watchlist.");
-    }
-  };
+  const restore = (movie) =>
+    run(`restore-${movie.id}`, async () => {
+      try {
+        await axios.put(`${API_URL}/seen/${movie.id}/remove`);
+        library.removeEntry(movie.id);
+        toast(`« ${movie.title} » remis dans ta watchlist`, "success");
+      } catch (err) {
+        toast(errorMessage(err, "Impossible de remettre en watchlist"), "error");
+      }
+    });
 
   return (
-    <div className="p-4">
-      <h1 className="text-2xl font-bold mb-4 text-center">📽️ Films vus</h1>
-
-      {movies.length === 0 ? (
-        <p className="text-center">Aucun film marqué comme vu.</p>
-      ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {movies.map((entry) => (
-            <div key={entry.movie.id} className="bg-gray-800 text-white p-4 rounded-lg">
-              <Link to={`/${entry.movie.media_type}/${entry.movie.tmdb_id}`} className="block hover:opacity-75">
+    <LibraryView
+      title="Déjà vus"
+      library={library}
+      empty={{
+        icon: "👀",
+        title: "Rien de vu pour l'instant",
+        text: "Marque des titres comme vus depuis ta watchlist pour les noter et laisser un avis.",
+        actionTo: "/watchlist",
+        actionLabel: "Ouvrir ma watchlist",
+      }}
+    >
+      <ul className="grid gap-4 lg:grid-cols-2">
+        {library.entries.map((entry) => {
+          const { movie } = entry;
+          const draft = draftOf(movie.id);
+          const watched = episodeCounts[movie.tmdb_id];
+          const poster = posterUrl(movie.poster_path, "w342");
+          return (
+            <li key={movie.id} className="surface flex gap-4 p-4">
+              <Link to={`/${movie.media_type}/${movie.tmdb_id}`} className="shrink-0" aria-label={movie.title}>
                 <img
-                  src={`https://image.tmdb.org/t/p/w500${entry.movie.poster_path}`}
-                  alt={entry.movie.title}
-                  className="rounded-lg w-full"
+                  src={poster || "/default-movie.png"}
+                  alt={`Affiche de ${movie.title}`}
+                  loading="lazy"
+                  className="aspect-[2/3] w-24 rounded-lg bg-ink-700 object-cover sm:w-28"
                 />
-                <h2 className="text-lg font-bold mt-2 text-center">{entry.movie.title}</h2>
               </Link>
-
-              <p className="text-center text-gray-400 mt-2">⭐ Note : {entry.rating || "Non noté"}</p>
-
-              {/* 🔥 Formulaire d'avis */}
-              <div className="mt-4 p-2 bg-gray-700 rounded-lg">
-                <h3 className="text-md font-semibold text-center mb-2">Donne ton avis</h3>
-
-                {/* ⭐ Sélection des étoiles (effet visuel) */}
-                <div className="flex justify-center space-x-1 mb-2">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      className={`text-2xl ${
-                        star <= (ratings[entry.movie.id] || 3) ? "text-yellow-400" : "text-gray-500"
-                      } transition-transform transform hover:scale-110`}
-                      onClick={() => setRatings((prev) => ({ ...prev, [entry.movie.id]: star }))}
-                    >
-                      {star <= (ratings[entry.movie.id] || 3) ? "★" : "☆"}
-                    </button>
-                  ))}
+              <div className="flex min-w-0 flex-1 flex-col gap-3">
+                <div className="min-w-0">
+                  <h2 className="truncate text-lg font-semibold" title={movie.title}>
+                    <Link to={`/${movie.media_type}/${movie.tmdb_id}`} className="hover:text-brand-300">{movie.title}</Link>
+                  </h2>
+                  <p className="text-xs text-zinc-400">
+                    {movie.media_type === "tv"
+                      ? `Série${watched ? ` · ${watched} épisode${watched > 1 ? "s" : ""} vu${watched > 1 ? "s" : ""}` : ""}`
+                      : "Film"}
+                  </p>
                 </div>
 
-                {/* 📝 Zone de texte pour l'avis */}
-                <textarea
-                  value={reviews[entry.movie.id] || ""}
-                  onChange={(e) =>
-                    setReviews((prev) => ({ ...prev, [entry.movie.id]: e.target.value }))
-                  }
-                  className="w-full p-2 rounded bg-gray-600 text-white"
-                  rows="2"
-                  placeholder="Écris ton avis ici..."
-                />
+                <div>
+                  <p className="mb-1 text-xs uppercase tracking-wide text-zinc-500">Ma note</p>
+                  <StarRating value={entry.rating || 0} onChange={(r) => rate(movie, r)} pending={isBusy(`rate-${movie.id}`)} label="Ma note" />
+                </div>
 
-                {/* 🚀 Bouton d'envoi */}
-                <button
-                  onClick={() => submitReview(entry.movie.id)}
-                  className="mt-2 bg-blue-500 hover:bg-blue-700 text-black px-4 py-2 rounded-lg w-full"
-                >
-                  Poster l&apos;avis
-                </button>
+                {openForm === movie.id ? (
+                  <form
+                    className="space-y-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      submitReview(movie);
+                    }}
+                  >
+                    <StarRating value={draft.rating} onChange={(rating) => setDraft(movie.id, { rating })} label="Note de l'avis" />
+                    <label className="sr-only" htmlFor={`comment-${movie.id}`}>Ton avis sur {movie.title}</label>
+                    <textarea
+                      id={`comment-${movie.id}`}
+                      rows={3}
+                      maxLength={2000}
+                      value={draft.comment}
+                      onChange={(e) => setDraft(movie.id, { comment: e.target.value })}
+                      placeholder="Ton avis…"
+                      className="field resize-y"
+                    />
+                    <div className="flex gap-2">
+                      <Button type="submit" variant="primary" size="sm" pending={isBusy(`review-${movie.id}`)} pendingLabel="Publication…">
+                        Publier
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setOpenForm(null)}>Annuler</Button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="mt-auto flex flex-wrap gap-2">
+                    <Button size="sm" onClick={() => setOpenForm(movie.id)}>Écrire un avis</Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      pending={isBusy(`restore-${movie.id}`)}
+                      pendingLabel="…"
+                      onClick={() => restore(movie)}
+                    >
+                      <FiRotateCcw aria-hidden="true" /> Remettre en watchlist
+                    </Button>
+                  </div>
+                )}
               </div>
-
-              {/* 🔄 Bouton pour remettre en Watchlist */}
-              <button
-                onClick={() => restoreToWatchlist(entry.movie.id)}
-                className="mt-2 bg-yellow-500 hover:bg-yellow-700 text-black px-4 py-2 rounded-lg w-full"
-              >
-                Remettre en Watchlist
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+            </li>
+          );
+        })}
+      </ul>
+    </LibraryView>
   );
 }
 

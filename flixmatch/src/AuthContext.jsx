@@ -1,8 +1,9 @@
 import { createContext, useState, useEffect } from "react";
 import axios from "axios";
 import { API_URL } from "./api";
+
 axios.defaults.baseURL = API_URL;
-axios.defaults.withCredentials = true; // 🔥 Permet d'envoyer les cookies à chaque requête
+axios.defaults.withCredentials = true; // Envoie le cookie d'authentification à chaque requête
 
 export const AuthContext = createContext();
 
@@ -13,34 +14,33 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const res = await axios.get(`${API_URL}/me`, { withCredentials: true });
+        const res = await axios.get("/me");
         setUser(res.data);
-      } catch (error) {
+      } catch {
         setUser(null);
       } finally {
         setLoading(false);
       }
     };
-    
+
     checkAuth();
   }, []);
 
   const login = async (email, password) => {
-    await axios.post(`${API_URL}/login`, { email, password }, { withCredentials: true });
-    const res = await axios.get(`${API_URL}/me`, { withCredentials: true });
+    await axios.post("/login", { email, password });
+    const res = await axios.get("/me");
     setUser(res.data);
   };
 
   const logout = async () => {
-    await axios.post(`${API_URL}/logout`, {}, { withCredentials: true });
+    await axios.post("/logout");
     setUser(null);
   };
 
   const updateProfile = async (userData) => {
     try {
-      await axios.put(`${API_URL}/account/update`, userData, { withCredentials: true });
-      // Mettre à jour les données utilisateur localement
-      setUser(prev => ({ ...prev, ...userData }));
+      const res = await axios.put("/account/update", userData);
+      setUser((prev) => ({ ...prev, ...(res.data?.user || userData) }));
       return true;
     } catch (error) {
       console.error("Erreur lors de la mise à jour du profil:", error);

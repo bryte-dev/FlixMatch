@@ -235,9 +235,8 @@ The project includes an advanced search page with support for filters such as:
 - **Vite**
 - **JavaScript**
 - **React Router**
-- **Material UI**
+- **Tailwind CSS v4**
 - **Axios**
-- **Swiper**
 - **React Icons**
 
 ### Backend
@@ -270,7 +269,6 @@ FlixMatch/
 │   │   ├── App.jsx                 Main React application and routing
 │   │   ├── main.jsx                React entry point
 │   │   ├── AuthContext.jsx         Authentication state and user session
-│   │   ├── theme.js                Material UI theme
 │   │   │
 │   │   ├── components/
 │   │   │   ├── Navbar.jsx          Main navigation
@@ -348,7 +346,7 @@ This file configures:
 
 - React;
 - React Router;
-- Material UI;
+- Tailwind CSS;
 - the global theme;
 - CSS reset;
 - the main `App` component.
@@ -579,7 +577,7 @@ Based on the current repository structure and implementation, the following feat
 
 - React frontend with Vite;
 - React Router navigation;
-- Material UI theme;
+- Tailwind design tokens (`src/styles/index.css`);
 - global styling;
 - public and private routes;
 - navigation bar;
