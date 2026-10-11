@@ -106,6 +106,13 @@ const serverError = (res, label, error) => {
 };
 
 const publicUser = { id: true, username: true };
+const withReplyCount = { _count: { select: { replies: true } } };
+
+// Numéros de saison/épisode TMDB (0 = épisodes spéciaux)
+const parseNumber = (value, max = 10000) => {
+  const n = Number(value);
+  return /^\d+$/.test(String(value)) && Number.isInteger(n) && n >= 0 && n <= max ? n : null;
+};
 
 const averageOf = (reviews) => {
   const rated = reviews.filter(
@@ -124,6 +131,37 @@ const tmdbGet = async (route, params = {}) => {
   return response.data;
 };
 
+// Petit cache mémoire pour éviter de marteler TMDB (saisons d'une série)
+const seasonCache = new Map();
+const SEASON_CACHE_TTL = 10 * 60 * 1000;
+const getSeason = async (seriesId, seasonNumber) => {
+  const key = `${seriesId}:${seasonNumber}`;
+  const cached = seasonCache.get(key);
+  if (cached && Date.now() - cached.at < SEASON_CACHE_TTL) return cached.data;
+
+  const raw = await tmdbGet(`/tv/${seriesId}/season/${seasonNumber}`, { language: "fr-FR" });
+  const data = {
+    id: raw.id,
+    season_number: raw.season_number,
+    name: raw.name,
+    overview: raw.overview || "",
+    air_date: raw.air_date || null,
+    poster_path: raw.poster_path || null,
+    episodes: (raw.episodes || []).map((e) => ({
+      id: e.id,
+      episode_number: e.episode_number,
+      name: e.name,
+      overview: e.overview || "",
+      air_date: e.air_date || null,
+      runtime: e.runtime || null,
+      still_path: e.still_path || null,
+    })),
+  };
+  if (seasonCache.size > 500) seasonCache.clear();
+  seasonCache.set(key, { at: Date.now(), data });
+  return data;
+};
+
 const tmdbError = (res, label, error) => {
   console.error(`❌ ${label} :`, error?.response?.status || error?.message || "erreur inconnue");
   return res.status(502).json({ error: "Erreur serveur TMDB" });
@@ -131,27 +169,31 @@ const tmdbError = (res, label, error) => {
 
 // ---------- Anti brute-force (en mémoire, suffisant pour une démo mono-instance) ----------
 
-const attempts = new Map();
-const authRateLimit = (req, res, next) => {
-  const now = Date.now();
-  const windowMs = 15 * 60 * 1000;
-  const entry = attempts.get(req.ip);
-  if (!entry || now - entry.start > windowMs) {
-    attempts.set(req.ip, { start: now, count: 1 });
-    return next();
-  }
-  entry.count += 1;
-  if (entry.count > 30) {
-    return res.status(429).json({ error: "Trop de tentatives, réessaie plus tard" });
-  }
-  next();
+const createRateLimit = (windowMs, max, message) => {
+  const hits = new Map();
+  setInterval(() => {
+    const now = Date.now();
+    for (const [ip, entry] of hits) {
+      if (now - entry.start > windowMs) hits.delete(ip);
+    }
+  }, windowMs).unref();
+
+  return (req, res, next) => {
+    const now = Date.now();
+    const entry = hits.get(req.ip);
+    if (!entry || now - entry.start > windowMs) {
+      hits.set(req.ip, { start: now, count: 1 });
+      return next();
+    }
+    entry.count += 1;
+    if (entry.count > max) return res.status(429).json({ error: message });
+    next();
+  };
 };
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, entry] of attempts) {
-    if (now - entry.start > 15 * 60 * 1000) attempts.delete(ip);
-  }
-}, 15 * 60 * 1000).unref();
+
+const authRateLimit = createRateLimit(15 * 60 * 1000, 30, "Trop de tentatives, réessaie plus tard");
+// Limite générale pour les actions d'écriture (épisodes, suppression d'avis)
+const actionRateLimit = createRateLimit(60 * 1000, 120, "Trop de requêtes, ralentis un peu");
 
 // ---------- Auth ----------
 
@@ -347,16 +389,41 @@ app.post("/watchlist", authMiddleware, async (req, res) => {
     });
 
     if (existingEntry) {
-      return res.status(400).json({ error: "Ce film est déjà dans la watchlist" });
+      return res.status(400).json({ error: "Ce film est déjà dans la watchlist", movieId: movie.id });
     }
 
     await prisma.watchlist.create({ data: { movieId: movie.id, userId } });
-    res.status(201).json({ message: "Film ajouté à la watchlist" });
+    res.status(201).json({ message: "Film ajouté à la watchlist", movieId: movie.id });
   } catch (error) {
     if (error?.code === "P2002") {
       return res.status(400).json({ error: "Ce film est déjà dans la watchlist" });
     }
     serverError(res, "Erreur ajout watchlist", error);
+  }
+});
+
+// Statut d'un titre (id TMDB) dans la bibliothèque de l'utilisateur courant
+app.get("/library/:tmdbId", actionRateLimit, authMiddleware, async (req, res) => {
+  const tmdbId = parseId(req.params.tmdbId);
+  if (!tmdbId) return res.status(400).json({ error: "Identifiant invalide" });
+
+  try {
+    const entry = await prisma.watchlist.findFirst({
+      where: { userId: req.userId, movie: { tmdb_id: tmdbId } },
+    });
+    res.json(
+      entry
+        ? {
+            inLibrary: true,
+            movieId: entry.movieId,
+            status: entry.status,
+            isFavorite: entry.isFavorite,
+            rating: entry.rating,
+          }
+        : { inLibrary: false }
+    );
+  } catch (error) {
+    serverError(res, "Erreur statut bibliothèque", error);
   }
 });
 
@@ -500,7 +567,7 @@ app.get("/tmdb/details/:tmdbId/:type", async (req, res) => {
         include: {
           reviews: {
             where: { parentId: null },
-            include: { user: { select: publicUser } },
+            include: { user: { select: publicUser }, ...withReplyCount },
             orderBy: { createdAt: "desc" },
           },
         },
@@ -550,6 +617,44 @@ app.get("/tmdb/search/:query", async (req, res) => {
   }
 });
 
+// Saisons d'une série (liste légère, sans les épisodes)
+app.get("/tmdb/tv/:tmdbId/seasons", async (req, res) => {
+  const tmdbId = parseId(req.params.tmdbId);
+  if (!tmdbId) return res.status(400).json({ error: "Identifiant invalide" });
+
+  try {
+    const show = await tmdbGet(`/tv/${tmdbId}`, { language: "fr-FR" });
+    const seasons = (show.seasons || []).map((season) => ({
+      id: season.id,
+      season_number: season.season_number,
+      name: season.name,
+      episode_count: season.episode_count || 0,
+      air_date: season.air_date || null,
+      poster_path: season.poster_path || null,
+    }));
+    res.json({ id: show.id, name: show.name, seasons });
+  } catch (error) {
+    if (error?.response?.status === 404) return res.status(404).json({ error: "Série introuvable" });
+    tmdbError(res, "Erreur saisons TMDB", error);
+  }
+});
+
+// Épisodes d'une saison
+app.get("/tmdb/tv/:tmdbId/season/:seasonNumber", async (req, res) => {
+  const tmdbId = parseId(req.params.tmdbId);
+  const seasonNumber = parseNumber(req.params.seasonNumber, 500);
+  if (!tmdbId || seasonNumber === null) {
+    return res.status(400).json({ error: "Identifiant ou numéro de saison invalide" });
+  }
+
+  try {
+    res.json(await getSeason(tmdbId, seasonNumber));
+  } catch (error) {
+    if (error?.response?.status === 404) return res.status(404).json({ error: "Saison introuvable" });
+    tmdbError(res, "Erreur épisodes TMDB", error);
+  }
+});
+
 app.get("/tmdb/genres", async (req, res) => {
   try {
     const data = await tmdbGet("/genre/movie/list", { language: "fr-FR" });
@@ -591,6 +696,23 @@ app.get("/tmdb/advanced-search", async (req, res) => {
   }
 
   try {
+    // `discover` ignore le titre : avec un texte, on cherche puis on filtre genre / note côté serveur
+    if (params.query) {
+      const data = await tmdbGet("/search/movie", {
+        language: params.language,
+        page,
+        query: params.query,
+        ...(params.year ? { year: params.year } : {}),
+      });
+      const genreIds = params.with_genres ? params.with_genres.split(",").map(Number) : [];
+      const minVote = params["vote_average.gte"] ?? 0;
+      const results = (data.results || []).filter(
+        (m) =>
+          (m.vote_average || 0) >= minVote &&
+          genreIds.every((g) => (m.genre_ids || []).includes(g))
+      );
+      return res.json({ ...data, results });
+    }
     res.json(await tmdbGet("/discover/movie", params));
   } catch (error) {
     tmdbError(res, "Erreur recherche avancée", error);
@@ -607,7 +729,7 @@ app.get("/reviews/:tmdbId", async (req, res) => {
   try {
     const reviews = await prisma.review.findMany({
       where: { movie: { tmdb_id: tmdbId }, parentId: null },
-      include: { user: { select: publicUser } },
+      include: { user: { select: publicUser }, ...withReplyCount },
       orderBy: { createdAt: "desc" },
     });
 
@@ -668,7 +790,7 @@ app.post("/reviews", authMiddleware, async (req, res) => {
         parentId: isReply ? parent : null,
         rating: isReply ? null : Number(rating),
       },
-      include: { user: { select: publicUser } },
+      include: { user: { select: publicUser }, ...withReplyCount },
     });
 
     res.status(201).json({ message: "Avis ajouté", review });
@@ -718,14 +840,7 @@ app.get("/reviews/:reviewId/replies", async (req, res) => {
   try {
     const replies = await prisma.review.findMany({
       where: { parentId: reviewId },
-      include: {
-        user: { select: publicUser },
-        replies: {
-          include: { user: { select: publicUser } },
-          orderBy: { createdAt: "asc" },
-          take: limit,
-        },
-      },
+      include: { user: { select: publicUser }, ...withReplyCount },
       take: limit + 1,
       ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
       orderBy: { createdAt: "asc" },
@@ -737,6 +852,178 @@ app.get("/reviews/:reviewId/replies", async (req, res) => {
     res.json({ replies, hasMore, nextCursor: hasMore ? replies[replies.length - 1].id : null });
   } catch (error) {
     serverError(res, "Erreur récupération des réponses", error);
+  }
+});
+
+// Supprime un avis ou une réponse, uniquement par son auteur.
+// Un avis qui a des réponses ne peut pas être supprimé (cela détacherait les réponses des autres).
+app.delete("/reviews/:reviewId", actionRateLimit, authMiddleware, async (req, res) => {
+  const reviewId = parseId(req.params.reviewId);
+  if (!reviewId) return res.status(400).json({ error: "Identifiant invalide" });
+
+  try {
+    const review = await prisma.review.findUnique({
+      where: { id: reviewId },
+      include: withReplyCount,
+    });
+    if (!review) return res.status(404).json({ error: "Avis introuvable" });
+    if (review.userId !== req.userId) {
+      return res.status(403).json({ error: "Tu ne peux supprimer que tes propres avis" });
+    }
+    if (review._count.replies > 0) {
+      return res.status(409).json({
+        error: "Cet avis a des réponses : il ne peut pas être supprimé.",
+      });
+    }
+
+    await prisma.review.delete({ where: { id: reviewId } });
+    res.json({ message: "Avis supprimé" });
+  } catch (error) {
+    if (error?.code === "P2025") return res.status(404).json({ error: "Avis introuvable" });
+    serverError(res, "Erreur suppression avis", error);
+  }
+});
+
+// ---------- Suivi des épisodes ----------
+
+const episodeSelect = { seasonNumber: true, episodeNumber: true, watchedAt: true };
+
+// Nombre d'épisodes vus par série (pour les listes « À voir » / « Vus »)
+app.get("/episodes", actionRateLimit, authMiddleware, async (req, res) => {
+  try {
+    const groups = await prisma.episodeWatch.groupBy({
+      by: ["tmdbSeriesId"],
+      where: { userId: req.userId },
+      _count: { _all: true },
+    });
+    res.json(groups.map((g) => ({ tmdbSeriesId: g.tmdbSeriesId, watchedCount: g._count._all })));
+  } catch (error) {
+    serverError(res, "Erreur récapitulatif épisodes", error);
+  }
+});
+
+// Épisodes vus d'une série par l'utilisateur courant
+app.get("/episodes/:seriesId", actionRateLimit, authMiddleware, async (req, res) => {
+  const seriesId = parseId(req.params.seriesId);
+  if (!seriesId) return res.status(400).json({ error: "Identifiant de série invalide" });
+
+  try {
+    const watched = await prisma.episodeWatch.findMany({
+      where: { userId: req.userId, tmdbSeriesId: seriesId },
+      select: episodeSelect,
+      orderBy: [{ seasonNumber: "asc" }, { episodeNumber: "asc" }],
+    });
+    res.json({ watched });
+  } catch (error) {
+    serverError(res, "Erreur récupération épisodes vus", error);
+  }
+});
+
+// Marque une saison entière comme vue / non vue (déclaré avant la route épisode)
+app.put("/episodes/:seriesId/season/:seasonNumber", actionRateLimit, authMiddleware, async (req, res) => {
+  const seriesId = parseId(req.params.seriesId);
+  const seasonNumber = parseNumber(req.params.seasonNumber, 500);
+  if (!seriesId || seasonNumber === null) {
+    return res.status(400).json({ error: "Identifiant ou numéro de saison invalide" });
+  }
+  if (typeof req.body?.watched !== "boolean") {
+    return res.status(400).json({ error: "watched doit être un booléen" });
+  }
+
+  try {
+    if (!req.body.watched) {
+      await prisma.episodeWatch.deleteMany({
+        where: { userId: req.userId, tmdbSeriesId: seriesId, seasonNumber },
+      });
+    } else {
+      const season = await getSeason(seriesId, seasonNumber).catch((error) => {
+        throw Object.assign(error, { isTmdb: true });
+      });
+      await prisma.episodeWatch.createMany({
+        data: season.episodes.map((e) => ({
+          userId: req.userId,
+          tmdbSeriesId: seriesId,
+          seasonNumber,
+          episodeNumber: e.episode_number,
+          tmdbEpisodeId: e.id,
+          name: e.name ? String(e.name).slice(0, 300) : null,
+          runtime: e.runtime,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    const watched = await prisma.episodeWatch.findMany({
+      where: { userId: req.userId, tmdbSeriesId: seriesId, seasonNumber },
+      select: episodeSelect,
+      orderBy: { episodeNumber: "asc" },
+    });
+    res.json({ watched });
+  } catch (error) {
+    if (error?.isTmdb) {
+      if (error?.response?.status === 404) return res.status(404).json({ error: "Saison introuvable" });
+      return tmdbError(res, "Erreur saison TMDB", error);
+    }
+    serverError(res, "Erreur mise à jour de la saison", error);
+  }
+});
+
+// Marque un épisode vu / non vu
+app.put("/episodes/:seriesId/:seasonNumber/:episodeNumber", actionRateLimit, authMiddleware, async (req, res) => {
+  const seriesId = parseId(req.params.seriesId);
+  const seasonNumber = parseNumber(req.params.seasonNumber, 500);
+  const episodeNumber = parseId(req.params.episodeNumber);
+  if (!seriesId || seasonNumber === null || !episodeNumber) {
+    return res.status(400).json({ error: "Identifiants de série, saison ou épisode invalides" });
+  }
+  if (typeof req.body?.watched !== "boolean") {
+    return res.status(400).json({ error: "watched doit être un booléen" });
+  }
+
+  const key = {
+    userId_tmdbSeriesId_seasonNumber_episodeNumber: {
+      userId: req.userId,
+      tmdbSeriesId: seriesId,
+      seasonNumber,
+      episodeNumber,
+    },
+  };
+
+  try {
+    if (!req.body.watched) {
+      await prisma.episodeWatch.deleteMany({
+        where: { userId: req.userId, tmdbSeriesId: seriesId, seasonNumber, episodeNumber },
+      });
+      return res.json({ seasonNumber, episodeNumber, watched: false });
+    }
+
+    let episode;
+    try {
+      const season = await getSeason(seriesId, seasonNumber);
+      episode = season.episodes.find((e) => e.episode_number === episodeNumber);
+    } catch (error) {
+      if (error?.response?.status === 404) return res.status(404).json({ error: "Épisode introuvable" });
+      return tmdbError(res, "Erreur épisode TMDB", error);
+    }
+    if (!episode) return res.status(404).json({ error: "Épisode introuvable" });
+
+    const entry = await prisma.episodeWatch.upsert({
+      where: key,
+      update: {},
+      create: {
+        userId: req.userId,
+        tmdbSeriesId: seriesId,
+        seasonNumber,
+        episodeNumber,
+        tmdbEpisodeId: episode.id,
+        name: episode.name ? String(episode.name).slice(0, 300) : null,
+        runtime: episode.runtime,
+      },
+      select: episodeSelect,
+    });
+    res.json({ ...entry, watched: true });
+  } catch (error) {
+    serverError(res, "Erreur mise à jour de l'épisode", error);
   }
 });
 

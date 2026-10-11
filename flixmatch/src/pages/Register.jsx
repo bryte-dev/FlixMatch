@@ -2,162 +2,56 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API_URL } from "../api";
-import { 
-  Container, 
-  Typography, 
-  TextField, 
-  Button, 
-  Paper, 
-  Box, 
-  Avatar,
-  CircularProgress,
-  Alert,
-  Snackbar
-} from '@mui/material';
-import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import AuthCard, { FormField } from "../components/AuthCard";
+import { Button } from "../components/ui";
+import { useToast } from "../toastContext";
+import { errorMessage } from "../utils";
 
 const Register = () => {
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: "",
-    severity: "success"
-  });
+  const [error, setError] = useState("");
   const navigate = useNavigate();
+  const toast = useToast();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
-  
-    
+    if (loading) return;
+    setError("");
+
     if (!email || !password) {
-      setSnackbar({
-        open: true,
-        message: "Veuillez remplir tous les champs obligatoires",
-        severity: "error"
-      });
-      setLoading(false);
+      setError("Remplis tous les champs obligatoires.");
       return;
     }
-  
+
+    setLoading(true);
     try {
-      const response = await axios.post(`${API_URL}/register`, 
-        { email, password, username }, 
-        { withCredentials: true } // 🔥 Active les cookies si besoin
-      );
-      
-      console.log("✅ Inscription réussie :", response.data);
-      setSnackbar({
-        open: true,
-        message: "Inscription réussie ! Redirection vers la page de connexion...",
-        severity: "success"
-      });
-      
-      setTimeout(() => {
-        navigate("/login");
-      }, 2000);
-  
-    } catch (error) {
-      console.error("❌ Erreur d'inscription :", error.response?.data || error.message);
-      setSnackbar({
-        open: true,
-        message: error.response?.data?.error || "Erreur lors de l'inscription",
-        severity: "error"
-      });
+      await axios.post(`${API_URL}/register`, { email, password, username });
+      toast("Compte créé ! Tu peux te connecter.", "success");
+      navigate("/login");
+    } catch (err) {
+      console.error("Erreur d'inscription :", err.response?.data || err.message);
+      setError(errorMessage(err, "Erreur lors de l'inscription"));
       setLoading(false);
     }
   };
 
-  const handleCloseSnackbar = () => {
-    setSnackbar({ ...snackbar, open: false });
-  };
-  
   return (
-    <Container maxWidth="sm" sx={{ mt: 12 }}>
-      <Paper elevation={3} sx={{ p: 4, borderRadius: 2 }}>
-        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 3 }}>
-          <Avatar sx={{ m: 1, bgcolor: 'success.main', width: 56, height: 56 }}>
-            <PersonAddIcon fontSize="large" />
-          </Avatar>
-          <Typography component="h1" variant="h5" sx={{ mt: 2 }}>
-            Créer un compte
-          </Typography>
-        </Box>
-
-        <form onSubmit={handleSubmit}>
-          <TextField
-            margin="normal"
-            required
-            fullWidth
-            label="Email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            variant="outlined"
-            sx={{ mb: 2 }}
-          />
-          
-          <TextField
-            margin="normal"
-            fullWidth
-            label="Nom d'utilisateur (optionnel)"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            variant="outlined"
-            sx={{ mb: 2 }}
-          />
-          
-          <TextField
-            margin="normal"
-            required
-            fullWidth
-            label="Mot de passe"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            variant="outlined"
-            sx={{ mb: 3 }}
-          />
-          
-          <Button
-            type="submit"
-            fullWidth
-            variant="contained"
-            color="success"
-            disabled={loading}
-            startIcon={loading ? <CircularProgress size={24} color="inherit" /> : null}
-            sx={{ py: 1.5 }}
-          >
-            {loading ? "Inscription en cours..." : "S'inscrire"}
-          </Button>
-          
-          <Box sx={{ mt: 3, textAlign: 'center' }}>
-            <Typography variant="body2">
-              Déjà un compte ? <Link to="/login" style={{ color: '#3f51b5', textDecoration: 'none' }}>Se connecter</Link>
-            </Typography>
-          </Box>
-        </form>
-      </Paper>
-
-      <Snackbar 
-        open={snackbar.open} 
-        autoHideDuration={6000} 
-        onClose={handleCloseSnackbar}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert 
-          onClose={handleCloseSnackbar} 
-          severity={snackbar.severity}
-          variant="filled"
-          sx={{ width: '100%' }}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
-    </Container>
+    <AuthCard
+      title="Créer un compte"
+      subtitle="Gratuit, pour suivre tes films et séries."
+      footer={<>Déjà inscrit ? <Link to="/login" className="font-semibold text-brand-300 hover:underline">Se connecter</Link></>}
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <FormField id="email" label="Email" type="email" autoComplete="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} hint="Ton email n'est jamais affiché publiquement." />
+        <FormField id="username" label="Nom d'utilisateur (optionnel)" type="text" autoComplete="nickname" maxLength={50} value={username} onChange={(e) => setUsername(e.target.value)} hint="Affiché à côté de tes avis." />
+        <FormField id="password" label="Mot de passe" type="password" autoComplete="new-password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} hint="8 caractères minimum." />
+        {error && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>}
+        <Button type="submit" variant="primary" className="w-full" pending={loading} pendingLabel="Création…">Créer mon compte</Button>
+      </form>
+    </AuthCard>
   );
 };
 

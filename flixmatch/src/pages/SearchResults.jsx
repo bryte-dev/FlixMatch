@@ -1,52 +1,60 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import axios from "axios";
 import { API_URL } from "../api";
+import MediaCard from "../components/MediaCard";
+import { EmptyState, ErrorState, GridSkeleton, MediaGrid, PageHeader } from "../components/ui";
+import { mediaTitle, mediaYear, posterUrl } from "../utils";
 
 const SearchResults = () => {
   const { query } = useParams();
   const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(query));
+  const [error, setError] = useState(false);
 
-  useEffect(() => {
-    const fetchResults = async () => {
-      setLoading(true);
-      try {
-        const response = await axios.get(`${API_URL}/tmdb/search/${encodeURIComponent(query)}`);
-        setResults(response.data);
-      } catch (error) {
-        console.error("❌ Erreur lors de la recherche :", error);
-        setResults([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (query) fetchResults();
-    else setLoading(false);
+  const fetchResults = useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      const response = await axios.get(`${API_URL}/tmdb/search/${encodeURIComponent(query)}`);
+      setResults(response.data.filter((i) => i.media_type === "movie" || i.media_type === "tv"));
+    } catch (err) {
+      console.error("Erreur lors de la recherche :", err);
+      setResults([]);
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
   }, [query]);
 
-  if (loading) return <div className="text-center text-white p-10">⏳ Chargement...</div>;
+  useEffect(() => {
+    if (query) fetchResults();
+    else setLoading(false);
+  }, [query, fetchResults]);
 
   return (
-    <div className="p-4">
-      <h1 className="text-2xl font-bold mb-4 text-center">🔎 Résultats de recherche</h1>
-  
-      {results.length === 0 ? (
-        <p className="text-center">Aucun résultat trouvé.</p>
+    <div className="page">
+      <PageHeader title="Résultats de recherche" subtitle={query ? `Pour « ${query} »` : ""} />
+      {!query ? (
+        <EmptyState icon="🔎" title="Que cherches-tu ?" text="Utilise la barre de recherche en haut de page." />
+      ) : loading ? (
+        <GridSkeleton />
+      ) : error ? (
+        <ErrorState message="La recherche a échoué." onRetry={fetchResults} />
+      ) : results.length === 0 ? (
+        <EmptyState icon="🤷" title="Aucun résultat" text="Essaie avec un autre titre ou une autre orthographe." actionTo="/advanced-search" actionLabel="Recherche avancée" />
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <MediaGrid>
           {results.map((item) => (
-            <div key={item.id} className="bg-gray-800 text-white p-4 rounded-lg">
-              <img
-                src={item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : "https://via.placeholder.com/500x750?text=Pas+d'image" }
-                alt={item.title || item.name}
-                className="rounded-lg w-full"
-              />
-              <h2 className="text-lg font-bold mt-2 text-center">{item.title || item.name}</h2>
-            </div>
+            <MediaCard
+              key={`${item.media_type}-${item.id}`}
+              to={`/${item.media_type}/${item.id}`}
+              title={mediaTitle(item)}
+              poster={posterUrl(item.poster_path)}
+              subtitle={[item.media_type === "tv" ? "Série" : "Film", mediaYear(item)].filter(Boolean).join(" · ")}
+            />
           ))}
-        </div>
+        </MediaGrid>
       )}
     </div>
   );
