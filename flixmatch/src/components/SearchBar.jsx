@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
+import { API_URL } from "../api";
 import { 
   TextField, 
   Box, 
@@ -23,11 +24,9 @@ function SearchBar() {
   useEffect(() => {
     if (query.length > 2) {
       axios
-        .get(`https://api.themoviedb.org/3/search/multi?query=${query}&language=fr-FR`, {
-          headers: { Authorization: `Bearer ${import.meta.env.VITE_TMDB_API_KEY}` },
-        })
+        .get(`${API_URL}/tmdb/search/${encodeURIComponent(query)}`)
         .then((res) => {
-          setResults(res.data.results.slice(0, 6)); // On limite les résultats
+          setResults(res.data.slice(0, 6)); // On limite les résultats
           setShowResults(true);
         })
         .catch((err) => console.error("Erreur recherche :", err));

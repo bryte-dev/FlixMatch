@@ -2,6 +2,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useContext, useState, useEffect, useRef } from "react";
 import { AuthContext } from "../AuthContext";
 import axios from "axios";
+import { API_URL } from "../api";
 
 // Styles CSS intégrés directement dans le composant
 const styles = `
@@ -335,7 +336,6 @@ const Navbar = () => {
   const searchRef = useRef(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mobileMenuRef = useRef(null);
-  const API_URL = import.meta.env.VITE_API_URL;
 
 
   // 🔥 Gérer l'affichage de la navbar selon le scroll
@@ -361,7 +361,7 @@ const Navbar = () => {
         return;
       }
       try {
-        const response = await axios.get(`${API_URL}/tmdb/search/${query}`);
+        const response = await axios.get(`${API_URL}/tmdb/search/${encodeURIComponent(query)}`);
         setResults(response.data);
         setShowResults(true);
       } catch (error) {
@@ -539,7 +539,7 @@ const Navbar = () => {
                   🔑 Connexion
                 </Link>
                 <Link to="/register" className="auth-button register-button">
-                  📝 S'inscrire
+                  📝 S&apos;inscrire
                 </Link>
               </div>
             )}
@@ -632,7 +632,7 @@ const Navbar = () => {
             </Link>
             <Link to="/register" className="mobile-menu-link" onClick={() => setMobileMenuOpen(false)}>
               <img src="/public/profile.png" alt="S'inscrire" />
-              <span>S'inscrire</span>
+              <span>S&apos;inscrire</span>
             </Link>
           </>
         )}

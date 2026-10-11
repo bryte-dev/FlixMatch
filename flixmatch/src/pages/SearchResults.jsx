@@ -1,31 +1,30 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import axios from "axios";
+import { API_URL } from "../api";
 
 const SearchResults = () => {
-    console.log("🔍 Query reçu dans SearchResults :", query);
   const { query } = useParams();
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
-  const API_URL = import.meta.env.VITE_API_URL;
 
   useEffect(() => {
     const fetchResults = async () => {
+      setLoading(true);
       try {
-        console.log("📡 Envoi de la requête à :", `${API_URL}/tmdb/search/${query}`);
-        const response = await axios.get(`${API_URL}/tmdb/search/${query}`);
-        console.log("✅ Résultats reçus :", response.data);
+        const response = await axios.get(`${API_URL}/tmdb/search/${encodeURIComponent(query)}`);
         setResults(response.data);
-        console.log("🆕 Nouveaux résultats dans le state :", results); // 🔥 Test si l’état change
       } catch (error) {
         console.error("❌ Erreur lors de la recherche :", error);
+        setResults([]);
+      } finally {
+        setLoading(false);
       }
     };
-  
+
     if (query) fetchResults();
+    else setLoading(false);
   }, [query]);
-  
-  
 
   if (loading) return <div className="text-center text-white p-10">⏳ Chargement...</div>;
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import axios from "axios";
+import { API_URL } from "../api";
 import { Swiper, SwiperSlide } from "swiper/react";
 import "swiper/css";
 import "swiper/css/navigation";
@@ -42,7 +43,6 @@ function MovieDetail() {
   const [isFavorite, setIsFavorite] = useState(false);
   const [loadedReviews, setLoadedReviews] = useState({}); // Pour éviter les chargements multiples
   const [checkingWatchlist, setCheckingWatchlist] = useState(false);
-  const API_URL = import.meta.env.VITE_API_URL;
 
   // Vérifier l'authentification de l'utilisateur
   useEffect(() => {
@@ -274,6 +274,9 @@ function MovieDetail() {
         `${API_URL}/reviews`,
         {
           movieId: movie.id,
+          title: movie.title || movie.name,
+          media_type: type,
+          poster_path: movie.poster_path || "",
           comment: replyInputs[parentReviewId],
           parentId: parentReviewId,
         },
@@ -319,7 +322,7 @@ function MovieDetail() {
         {replies[reviewId].map(reply => (
           <Paper key={reply.id} sx={{ p: 2, mb: 2, bgcolor: 'background.paper', borderRadius: 2 }}>
             <Typography variant="subtitle2" color="text.secondary">
-              <strong>{reply.user?.email || "Utilisateur inconnu"}</strong>
+              <strong>{reply.user?.username || "Utilisateur"}</strong>
             </Typography>
             <Typography variant="body1" sx={{ my: 1 }}>{reply.comment}</Typography>
             <Typography variant="caption" color="text.secondary">
@@ -488,7 +491,7 @@ function MovieDetail() {
               reviews.map((review) => (
                 <Paper key={review.id} sx={{ p: 3, mb: 3, bgcolor: 'background.paper', borderRadius: 2 }}>
                   <Typography variant="subtitle1">
-                    <strong>{review.user?.email || "Utilisateur inconnu"}</strong>
+                    <strong>{review.user?.username || "Utilisateur"}</strong>
                   </Typography>
                   {review.rating && (
                     <Rating value={review.rating} readOnly size="small" />

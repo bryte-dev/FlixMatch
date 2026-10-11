@@ -6,704 +6,764 @@ import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import axios from "axios";
-import path from 'path';
-import { fileURLToPath } from 'url';
-import os from 'os';
+import path from "path";
+import crypto from "crypto";
+import { fileURLToPath } from "url";
 
-// Pour obtenir l'équivalent de __dirname en ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 dotenv.config();
+
+const isProduction = process.env.NODE_ENV === "production";
+
+// En production, on refuse de démarrer sans la configuration indispensable.
+const requiredEnv = ["JWT_SECRET", "DATABASE_PUBLIC_URL", "TMDB_API_KEY"];
+const missingEnv = requiredEnv.filter((name) => !process.env[name]);
+if (missingEnv.length > 0) {
+  if (isProduction) {
+    console.error(`Variables d'environnement manquantes : ${missingEnv.join(", ")}`);
+    process.exit(1);
+  }
+  console.warn(`⚠️ Variables d'environnement manquantes (dev) : ${missingEnv.join(", ")}`);
+}
+
+// Hors production uniquement : secret éphémère aléatoire (jamais une valeur connue).
+const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString("hex");
+const JWT_EXPIRES_IN = "7d";
+const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+
+const TMDB_BASE_URL = "https://api.themoviedb.org/3";
+const TMDB_KEY = process.env.TMDB_API_KEY || "";
+// Accepte un token v4 (Bearer) ou une clé v3 (32 caractères hexadécimaux).
+const TMDB_IS_V3_KEY = /^[a-f0-9]{32}$/i.test(TMDB_KEY);
+
 const app = express();
 const prisma = new PrismaClient();
 
+app.disable("x-powered-by");
+// Railway place l'application derrière un proxy HTTPS
+app.set("trust proxy", 1);
 
-app.use(cors());
+// Déploiement same-origin : CORS n'est activé que si CORS_ORIGIN est défini (front séparé en dev).
+if (process.env.CORS_ORIGIN) {
+  app.use(
+    cors({
+      origin: process.env.CORS_ORIGIN.split(",").map((o) => o.trim()),
+      credentials: true,
+    })
+  );
+}
 
-app.get('/api/config', (req, res) => {
-  res.json({
-    tmdbApiKey: process.env.TMDB_API_KEY
-  });
-});
-
-
-app.use(express.json());
+app.use(express.json({ limit: "100kb" }));
 app.use(cookieParser());
 
-const JWT_SECRET = process.env.JWT_SECRET || "ultra_secret_key";
-const JWT_EXPIRES_IN = "7d"; // Durée du token
+const cookieOptions = {
+  httpOnly: true,
+  secure: isProduction,
+  sameSite: "lax",
+  path: "/",
+};
 
-// Middleware pour logger les requêtes (aide au débogage)
-app.use((req, res, next) => {
-  console.log(`${req.method} ${req.path}`);
+// ---------- Frontend statique ----------
+
+const distDir = path.join(__dirname, "dist");
+const sendIndex = (res) =>
+  res.sendFile(path.join(distDir, "index.html"), (err) => {
+    if (err) res.status(404).json({ error: "Frontend non construit (npm run build)" });
+  });
+
+app.use(express.static(distDir));
+
+// Certaines pages du front (/watchlist, /seen, ...) portent le même nom qu'une route API :
+// une navigation navigateur (Accept: text/html) reçoit la SPA, les appels axios reçoivent le JSON.
+app.get(["/watchlist", "/seen", "/favorites", "/junk"], (req, res, next) => {
+  if (req.accepts(["json", "html"]) === "html") return sendIndex(res);
   next();
 });
 
-// 🔥 Middleware d'auth
+// ---------- Helpers ----------
+
+const MAX_INT = 2147483647;
+
+const parseId = (value) => {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 && n <= MAX_INT ? n : null;
+};
+
+const isValidRating = (value) => Number.isInteger(value) && value >= 1 && value <= 5;
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const cleanString = (value, max) =>
+  typeof value === "string" && value.trim().length > 0 && value.trim().length <= max
+    ? value.trim()
+    : null;
+
+const serverError = (res, label, error) => {
+  console.error(`❌ ${label} :`, error?.code || error?.message || "erreur inconnue");
+  return res.status(500).json({ error: "Erreur serveur" });
+};
+
+const publicUser = { id: true, username: true };
+
+const averageOf = (reviews) => {
+  const rated = reviews.filter(
+    (r) => r.parentId == null && r.rating != null
+  );
+  if (rated.length === 0) return null;
+  return rated.reduce((sum, r) => sum + r.rating, 0) / rated.length;
+};
+
+const tmdbGet = async (route, params = {}) => {
+  const response = await axios.get(`${TMDB_BASE_URL}${route}`, {
+    params: TMDB_IS_V3_KEY ? { ...params, api_key: TMDB_KEY } : params,
+    headers: TMDB_IS_V3_KEY ? {} : { Authorization: "Bearer " + TMDB_KEY },
+    timeout: 10000,
+  });
+  return response.data;
+};
+
+const tmdbError = (res, label, error) => {
+  console.error(`❌ ${label} :`, error?.response?.status || error?.message || "erreur inconnue");
+  return res.status(502).json({ error: "Erreur serveur TMDB" });
+};
+
+// ---------- Anti brute-force (en mémoire, suffisant pour une démo mono-instance) ----------
+
+const attempts = new Map();
+const authRateLimit = (req, res, next) => {
+  const now = Date.now();
+  const windowMs = 15 * 60 * 1000;
+  const entry = attempts.get(req.ip);
+  if (!entry || now - entry.start > windowMs) {
+    attempts.set(req.ip, { start: now, count: 1 });
+    return next();
+  }
+  entry.count += 1;
+  if (entry.count > 30) {
+    return res.status(429).json({ error: "Trop de tentatives, réessaie plus tard" });
+  }
+  next();
+};
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of attempts) {
+    if (now - entry.start > 15 * 60 * 1000) attempts.delete(ip);
+  }
+}, 15 * 60 * 1000).unref();
+
+// ---------- Auth ----------
+
 const authMiddleware = (req, res, next) => {
-  // Accepter le token soit des cookies, soit du header Authorization
-  const token = req.cookies.token || req.headers.authorization?.split(' ')[1];
-  console.log("🧐 Token reçu :", token);
+  const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
 
   if (!token) return res.status(401).json({ error: "Accès refusé, token manquant" });
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.userId = decoded.userId;
-    console.log("✅ User ID authentifié :", req.userId);
     next();
-  } catch (error) {
-    console.error("❌ Erreur token:", error);
+  } catch {
     res.status(401).json({ error: "Token invalide ou expiré" });
   }
 };
 
-app.get("/me", authMiddleware, async (req, res) => {
-  const user = await prisma.user.findUnique({
-    where: { id: req.userId },
-    select: { id: true, email: true, username: true },
-  });
+// ---------- Santé ----------
 
-  if (!user) return res.status(404).json({ error: "Utilisateur introuvable" });
-
-  res.json(user);
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
 });
 
+// ---------- Utilisateurs ----------
 
-// 🔹 Inscription
-app.post("/register", async (req, res) => {
-  const { email, password, username } = req.body;
+app.get("/me", authMiddleware, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId },
+      select: { id: true, email: true, username: true },
+    });
 
-  if (!email || !password) {
+    if (!user) return res.status(404).json({ error: "Utilisateur introuvable" });
+
+    res.json(user);
+  } catch (error) {
+    serverError(res, "Erreur /me", error);
+  }
+});
+
+app.post("/register", authRateLimit, async (req, res) => {
+  const { email, password, username } = req.body || {};
+
+  if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
     return res.status(400).json({ error: "Email et mot de passe requis" });
   }
 
-  const hashedPassword = await bcrypt.hash(password, 10);
+  const normalizedEmail = email.trim().toLowerCase();
+  if (normalizedEmail.length > 254 || !EMAIL_REGEX.test(normalizedEmail)) {
+    return res.status(400).json({ error: "Email invalide" });
+  }
+
+  // bcrypt ne tient compte que des 72 premiers octets
+  if (password.length < 8 || Buffer.byteLength(password) > 72) {
+    return res
+      .status(400)
+      .json({ error: "Le mot de passe doit contenir entre 8 et 72 caractères" });
+  }
+
+  let cleanUsername = null;
+  if (username !== undefined && username !== null && username !== "") {
+    cleanUsername = cleanString(username, 50);
+    if (!cleanUsername) {
+      return res.status(400).json({ error: "Nom d'utilisateur invalide (50 caractères max)" });
+    }
+  }
 
   try {
+    const hashedPassword = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
-      data: { email, username, password: hashedPassword },
+      data: { email: normalizedEmail, username: cleanUsername, password: hashedPassword },
     });
 
     res.status(201).json({ message: "Utilisateur créé", userId: user.id });
   } catch (error) {
-    res.status(500).json({ error: "Erreur lors de l'inscription", details: error.message });
+    if (error?.code === "P2002") {
+      return res.status(409).json({ error: "Un compte existe déjà avec cet email" });
+    }
+    serverError(res, "Erreur inscription", error);
   }
 });
 
-// 🔹 Connexion
-app.post("/login", async (req, res) => {
-  const { email, password } = req.body;
+app.post("/login", authRateLimit, async (req, res) => {
+  const { email, password } = req.body || {};
 
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) return res.status(401).json({ error: "Utilisateur introuvable" });
+  if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
+    return res.status(400).json({ error: "Email et mot de passe requis" });
+  }
 
-  const isValid = await bcrypt.compare(password, user.password);
-  if (!isValid) return res.status(401).json({ error: "Mot de passe incorrect" });
+  try {
+    const user = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
+    const isValid = user ? await bcrypt.compare(password, user.password) : false;
+    if (!user || !isValid) {
+      return res.status(401).json({ error: "Email ou mot de passe incorrect" });
+    }
 
-  const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 
-  res.cookie("token", token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 jours
-  });
-
-  res.json({ message: "Connexion réussie", userId: user.id });
+    res.cookie("token", token, { ...cookieOptions, maxAge: COOKIE_MAX_AGE });
+    res.json({ message: "Connexion réussie", userId: user.id });
+  } catch (error) {
+    serverError(res, "Erreur connexion", error);
+  }
 });
 
-// 🔹 Déconnexion
 app.post("/logout", (req, res) => {
-  res.clearCookie("token");
+  res.clearCookie("token", cookieOptions);
   res.json({ message: "Déconnexion réussie" });
 });
 
-// 🔹 Route protégée pour récupérer l'utilisateur connecté
-app.get("/me", authMiddleware, async (req, res) => {
-  const user = await prisma.user.findUnique({
-    where: { id: req.userId },
-    select: { id: true, email: true },
-  });
+app.put("/account/update", authMiddleware, async (req, res) => {
+  const { username } = req.body || {};
 
-  if (!user) return res.status(404).json({ error: "Utilisateur introuvable" });
+  let cleanUsername = null;
+  if (username !== undefined && username !== null && username !== "") {
+    cleanUsername = cleanString(username, 50);
+    if (!cleanUsername) {
+      return res.status(400).json({ error: "Nom d'utilisateur invalide (50 caractères max)" });
+    }
+  }
 
-  res.json(user);
-});
-
-// Route pour obtenir la watchlist de l'utilisateur
-app.get("/watchlist", authMiddleware, async (req, res) => {
   try {
-    const userId = req.userId;
-    console.log("🔍 Récupération de la watchlist pour User ID :", userId);
-
-    const watchlist = await prisma.watchlist.findMany({
-      where: { userId, status: { not: "JUNK" } },
-      include: { movie: true },
+    const updatedUser = await prisma.user.update({
+      where: { id: req.userId },
+      data: { username: cleanUsername },
     });
 
-    console.log("🎥 Films récupérés :", watchlist);
-    res.json(watchlist);
+    res.status(200).json({
+      message: "Profil mis à jour avec succès",
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        username: updatedUser.username,
+      },
+    });
   } catch (error) {
-    console.error("❌ Erreur récupération watchlist :", error);
-    res.status(500).json({ error: "Erreur serveur" });
+    if (error?.code === "P2025") {
+      return res.status(404).json({ error: "Utilisateur introuvable" });
+    }
+    serverError(res, "Erreur mise à jour profil", error);
   }
 });
 
+// ---------- Watchlist / vus / favoris / corbeille ----------
 
+const listByFilter = (label, buildWhere) => async (req, res) => {
+  try {
+    const entries = await prisma.watchlist.findMany({
+      where: { userId: req.userId, ...buildWhere },
+      include: { movie: true },
+    });
+    res.json(entries);
+  } catch (error) {
+    serverError(res, label, error);
+  }
+};
 
-// 🔹 Ajouter un film à la watchlist
+app.get(
+  "/watchlist",
+  authMiddleware,
+  listByFilter("Erreur récupération watchlist", { status: { not: "JUNK" } })
+);
+app.get("/seen", authMiddleware, listByFilter("Erreur récupération films vus", { status: "SEEN" }));
+app.get("/favorites", authMiddleware, listByFilter("Erreur récupération favoris", { isFavorite: true }));
+app.get("/junk", authMiddleware, listByFilter("Erreur récupération corbeille", { status: "JUNK" }));
+
 app.post("/watchlist", authMiddleware, async (req, res) => {
-  const { tmdb_id, title, media_type, poster_path } = req.body;
+  const { tmdb_id, title, media_type, poster_path } = req.body || {};
   const userId = req.userId;
 
-  console.log("🔍 Données reçues :", req.body);
-  console.log("👤 User ID récupéré :", userId);
+  const tmdbId = parseId(tmdb_id);
+  const cleanTitle = cleanString(title, 300);
+  const cleanMediaType = cleanString(media_type, 20);
+  if (!tmdbId || !cleanTitle || !cleanMediaType) {
+    return res.status(400).json({ error: "tmdb_id, title et media_type valides sont requis" });
+  }
+  const cleanPoster = typeof poster_path === "string" ? poster_path.slice(0, 300) : "";
 
   try {
-    // Vérifie si le film existe déjà dans la base
-    let movie = await prisma.movie.findUnique({ where: { tmdb_id: Number(tmdb_id) } });
+    const movie = await prisma.movie.upsert({
+      where: { tmdb_id: tmdbId },
+      update: {},
+      create: {
+        tmdb_id: tmdbId,
+        title: cleanTitle,
+        media_type: cleanMediaType,
+        poster_path: cleanPoster,
+      },
+    });
 
-
-    // S'il n'existe pas, on l'ajoute
-    if (!movie) {
-      movie = await prisma.movie.create({
-        data: { tmdb_id, title, media_type, poster_path },
-      });
-      console.log("✅ Film ajouté dans `movie` :", movie);
-    }
-
-    // Vérifie si le film est déjà dans la watchlist de l'utilisateur
     const existingEntry = await prisma.watchlist.findFirst({
       where: { movieId: movie.id, userId },
     });
 
     if (existingEntry) {
-      console.log("⚠️ Ce film est déjà dans la watchlist !");
       return res.status(400).json({ error: "Ce film est déjà dans la watchlist" });
     }
 
-    // Ajout du film à la watchlist
-    const watchlistEntry = await prisma.watchlist.create({
-      data: { movieId: movie.id, userId },
-    });
-
-    console.log("✅ Film ajouté dans `watchlist` :", watchlistEntry);
+    await prisma.watchlist.create({ data: { movieId: movie.id, userId } });
     res.status(201).json({ message: "Film ajouté à la watchlist" });
-
   } catch (error) {
-    console.error("❌ ERREUR SERVEUR :", error);
-    res.status(500).json({ error: "Erreur serveur", details: error.message });
+    if (error?.code === "P2002") {
+      return res.status(400).json({ error: "Ce film est déjà dans la watchlist" });
+    }
+    serverError(res, "Erreur ajout watchlist", error);
   }
 });
 
+// Met à jour une entrée de la watchlist de l'utilisateur
+const updateEntry = (label, okMessage, buildData, { requireExisting = false, validate } = {}) =>
+  async (req, res) => {
+    const movieId = parseId(req.params.movieId);
+    if (!movieId) return res.status(400).json({ error: "Identifiant de film invalide" });
 
-
-// 🔹 Marquer un film comme vu
-app.put("/watchlist/:movieId/seen", authMiddleware, async (req, res) => {
-  const { movieId } = req.params;
-  const userId = req.userId;
-
-  try {
-    // Vérifier que le film est bien dans la watchlist du bon user
-    const watchlistEntry = await prisma.watchlist.findFirst({
-      where: { movieId: Number(movieId), userId },
-    });
-
-    if (!watchlistEntry) {
-      return res.status(404).json({ error: "Ce film n'est pas dans ta watchlist." });
+    if (validate) {
+      const error = validate(req);
+      if (error) return res.status(400).json({ error });
     }
 
-    // Mettre à jour le statut du film à "SEEN"
-    await prisma.watchlist.updateMany({
-      where: { movieId: Number(movieId), userId },
-      data: { status: "SEEN" },
-    });
+    try {
+      const result = await prisma.watchlist.updateMany({
+        where: { movieId, userId: req.userId },
+        data: buildData(req),
+      });
 
-    res.status(200).json({ message: "Film marqué comme vu et retiré de la watchlist" });
+      if (result.count === 0 && requireExisting) {
+        return res.status(404).json({ error: "Ce film n'est pas dans ta watchlist." });
+      }
 
-  } catch (error) {
-    console.error("❌ Erreur lors du marquage comme vu :", error);
-    res.status(500).json({ error: "Erreur serveur" });
-  }
-});
+      res.status(200).json({ message: okMessage });
+    } catch (error) {
+      serverError(res, label, error);
+    }
+  };
 
+app.put(
+  "/watchlist/:movieId/seen",
+  authMiddleware,
+  updateEntry(
+    "Erreur marquage comme vu",
+    "Film marqué comme vu et retiré de la watchlist",
+    () => ({ status: "SEEN" }),
+    { requireExisting: true }
+  )
+);
 
+app.put(
+  "/seen/:movieId/remove",
+  authMiddleware,
+  updateEntry(
+    "Erreur retrait de SEEN",
+    "Film retiré de SEEN et remis dans la Watchlist",
+    () => ({ status: "WATCHLIST" })
+  )
+);
 
-// 🔹 Remove un film marqué comme vu
-app.put("/seen/:movieId/remove", authMiddleware, async (req, res) => {
-  const { movieId } = req.params;
-  const userId = req.userId;
+app.put(
+  "/watchlist/:movieId/favorite",
+  authMiddleware,
+  updateEntry(
+    "Erreur mise à jour favoris",
+    "Favoris mis à jour",
+    (req) => ({ isFavorite: req.body.isFavorite }),
+    {
+      validate: (req) =>
+        typeof req.body?.isFavorite === "boolean" ? null : "isFavorite doit être un booléen",
+    }
+  )
+);
 
-  try {
-    await prisma.watchlist.updateMany({
-      where: { movieId: Number(movieId), userId },
-      data: { status: "WATCHLIST" },
-    });
+app.put(
+  "/watchlist/:movieId/junk",
+  authMiddleware,
+  updateEntry("Erreur corbeille", "Film déplacé vers la corbeille", () => ({
+    status: "JUNK",
+    isFavorite: false,
+  }))
+);
 
-    res.status(200).json({ message: "Film retiré de SEEN et remis dans la Watchlist" });
-  } catch (error) {
-    console.error("❌ Erreur lors du retrait de SEEN :", error);
-    res.status(500).json({ error: "Erreur serveur" });
-  }
-});
-
-
-app.get("/seen", authMiddleware, async (req, res) => {
-  try {
-    const userId = req.userId;
-    console.log("🔍 Récupération des films vus pour User ID :", userId);
-
-    const seenMovies = await prisma.watchlist.findMany({
-      where: { userId, status: "SEEN" }, // 🔥 Vérifie bien que le statut est "SEEN"
-      include: { movie: true },
-    });
-
-    console.log("🎥 Films vus récupérés :", seenMovies);
-    res.json(seenMovies);
-  } catch (error) {
-    console.error("❌ Erreur récupération films vus :", error);
-    res.status(500).json({ error: "Erreur serveur" });
-  }
-});
-
-
-// RATING
+app.put(
+  "/junk/:movieId/restore",
+  authMiddleware,
+  updateEntry("Erreur restauration", "Film restauré dans la Watchlist", () => ({
+    status: "WATCHLIST",
+  }))
+);
 
 app.put("/seen/:movieId/rating", authMiddleware, async (req, res) => {
-  const { movieId } = req.params;
-  const { rating } = req.body;
-  const userId = req.userId;
+  const movieId = parseId(req.params.movieId);
+  const rating = Number(req.body?.rating);
 
-  if (!rating || rating < 1 || rating > 5) {
-    return res.status(400).json({ error: "La note doit être entre 1 et 5." });
+  if (!movieId) return res.status(400).json({ error: "Identifiant de film invalide" });
+  if (!isValidRating(rating)) {
+    return res.status(400).json({ error: "La note doit être un entier entre 1 et 5." });
   }
 
   try {
-    // Vérifie si le film est bien dans la Watchlist et s'il est SEEN
-    const watchlistEntry = await prisma.watchlist.findFirst({
-      where: { movieId: Number(movieId), userId, status: "SEEN" },
+    const result = await prisma.watchlist.updateMany({
+      where: { movieId, userId: req.userId, status: "SEEN" },
+      data: { rating },
     });
 
-    if (!watchlistEntry) {
+    if (result.count === 0) {
       return res.status(400).json({ error: "Ce film n'est pas marqué comme vu." });
     }
 
-    // Met à jour la note (rating)
-    const updatedMovie = await prisma.watchlist.updateMany({
-      where: { movieId: Number(movieId), userId },
-      data: { rating: Number(rating) },
-    });
-
-    res.status(200).json({ message: "Note mise à jour", updatedMovie });
+    res.status(200).json({ message: "Note mise à jour" });
   } catch (error) {
-    console.error("❌ Erreur lors de la mise à jour du rating :", error);
-    res.status(500).json({ error: "Erreur serveur" });
+    serverError(res, "Erreur mise à jour du rating", error);
   }
 });
 
+// ---------- TMDB (proxy : la clé reste côté serveur) ----------
 
-// 🔹 Mettre un film dans les favoris
-app.put("/watchlist/:movieId/favorite", authMiddleware, async (req, res) => {
-  const { movieId } = req.params;
-  const { isFavorite } = req.body;
-  const userId = req.userId;
+const validType = (type) => ["movie", "tv"].includes(type);
 
+app.get("/tmdb/trending", async (req, res) => {
+  const page = parseId(req.query.page) || 1;
   try {
-    const updatedMovie = await prisma.watchlist.updateMany({
-      where: { movieId: Number(movieId), userId },
-      data: { isFavorite },
-    });
-
-    res.status(200).json({ message: "Favoris mis à jour", updatedMovie });
+    const data = await tmdbGet("/trending/all/day", { language: "fr-CH", page: Math.min(page, 500) });
+    res.json(data);
   } catch (error) {
-    res.status(500).json({ error: "Erreur serveur" });
+    tmdbError(res, "Erreur tendances TMDB", error);
   }
 });
-
-app.get("/favorites", authMiddleware, async (req, res) => {
-  try {
-    const userId = req.userId;
-    console.log("🔍 Récupération des favoris pour User ID :", userId);
-
-    const favorites = await prisma.watchlist.findMany({
-      where: { userId, isFavorite: true }, // 🔥 Vérifie bien que isFavorite est TRUE
-      include: { movie: true },
-    });
-
-    console.log("🎥 Films favoris récupérés :", favorites);
-    res.json(favorites);
-  } catch (error) {
-    console.error("❌ Erreur récupération favoris :", error);
-    res.status(500).json({ error: "Erreur serveur" });
-  }
-});
-
-// 🔹 Déplacer un film vers la corbeille
-app.put("/watchlist/:movieId/junk", authMiddleware, async (req, res) => {
-  const { movieId } = req.params;
-  const userId = req.userId;
-
-  try {
-    await prisma.watchlist.updateMany({
-      where: { movieId: Number(movieId), userId },
-      data: { status: "JUNK", isFavorite: false },
-    });
-
-    res.status(200).json({ message: "Film déplacé vers la corbeille" });
-  } catch (error) {
-    res.status(500).json({ error: "Erreur serveur" });
-  }
-});
-
-app.get("/junk", authMiddleware, async (req, res) => {
-  try {
-    const userId = req.userId;
-    console.log("🔍 Récupération des films dans la corbeille pour User ID :", userId);
-
-    const junkMovies = await prisma.watchlist.findMany({
-      where: { userId, status: "JUNK" }, // 🔥 Vérifie bien que le statut est "JUNK"
-      include: { movie: true },
-    });
-
-    console.log("🗑️ Films dans la corbeille :", junkMovies);
-    res.json(junkMovies);
-  } catch (error) {
-    console.error("❌ Erreur récupération films corbeille :", error);
-    res.status(500).json({ error: "Erreur serveur" });
-  }
-});
-
-
-// 🔹 Restaurer un film depuis la corbeille
-app.put("/junk/:movieId/restore", authMiddleware, async (req, res) => {
-  const { movieId } = req.params;
-  const userId = req.userId;
-
-  try {
-    await prisma.watchlist.updateMany({
-      where: { movieId: Number(movieId), userId },
-      data: { status: "WATCHLIST" },
-    });
-
-    res.status(200).json({ message: "Film restauré dans la Watchlist" });
-  } catch (error) {
-    res.status(500).json({ error: "Erreur serveur" });
-  }
-});
-
-//Get les details des movies
 
 app.get("/tmdb/details/:tmdbId/:type", async (req, res) => {
-  const { tmdbId, type } = req.params;
+  const tmdbId = parseId(req.params.tmdbId);
+  const { type } = req.params;
 
-  if (!["movie", "tv"].includes(type)) {
+  if (!tmdbId) return res.status(400).json({ error: "Identifiant invalide" });
+  if (!validType(type)) {
     return res.status(400).json({ error: "Type invalide, doit être 'movie' ou 'tv'" });
   }
 
   try {
-    console.log(`🔍 Fetching details from TMDB: ${type}/${tmdbId}`);
-
-    // 🔥 Récupérer les détails du film depuis TMDB
-    const response = await axios.get(
-      `https://api.themoviedb.org/3/${type}/${tmdbId}?language=fr-FR&append_to_response=credits,videos,images,watch/providers`,
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.TMDB_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    const movieDetails = response.data;
-
-    // 🔥 Vérifier si le film existe dans la DB locale
-    let movie = await prisma.movie.findUnique({
-      where: { tmdb_id: Number(tmdbId) },
-      include: {
-        reviews: {
-          include: { user: true }, // Inclure les auteurs des reviews
-        },
-      },
+    const movieDetails = await tmdbGet(`/${type}/${tmdbId}`, {
+      language: "fr-FR",
+      append_to_response: "credits,videos,images,watch/providers",
     });
 
-    // 🔥 Si le film existe en local, calculer la moyenne des ratings
-    let averageRating = null;
-    if (movie && movie.reviews.length > 0) {
-      const totalRatings = movie.reviews.reduce((sum, review) => sum + review.rating, 0);
-      averageRating = (totalRatings / movie.reviews.length).toFixed(1);
+    let reviews = [];
+    try {
+      const movie = await prisma.movie.findUnique({
+        where: { tmdb_id: tmdbId },
+        include: {
+          reviews: {
+            where: { parentId: null },
+            include: { user: { select: publicUser } },
+            orderBy: { createdAt: "desc" },
+          },
+        },
+      });
+      reviews = movie ? movie.reviews : [];
+    } catch (error) {
+      console.error("❌ Erreur lecture reviews :", error?.code || error?.message);
     }
+
+    const average = averageOf(reviews);
 
     res.json({
       ...movieDetails,
-      flixmatchRating: averageRating, // 🔥 Ajoute la note moyenne locale
-      reviews: movie ? movie.reviews : [],
+      flixmatchRating: average === null ? null : average.toFixed(1),
+      reviews,
     });
-
   } catch (error) {
-    console.error("❌ Erreur récupération TMDB :", error?.response?.data || error);
-    res.status(500).json({ error: "Erreur serveur TMDB" });
+    tmdbError(res, "Erreur détails TMDB", error);
   }
 });
 
-// Recommendations (dans movie details)
-
 app.get("/tmdb/recommendations/:tmdbId/:type", async (req, res) => {
-  const { tmdbId, type } = req.params;
+  const tmdbId = parseId(req.params.tmdbId);
+  const { type } = req.params;
 
-  if (!["movie", "tv"].includes(type)) {
+  if (!tmdbId) return res.status(400).json({ error: "Identifiant invalide" });
+  if (!validType(type)) {
     return res.status(400).json({ error: "Type invalide, doit être 'movie' ou 'tv'" });
   }
 
   try {
-    console.log(`🔍 Fetching REAL recommendations for: ${type}/${tmdbId}`);
-
-    const response = await axios.get(
-      `https://api.themoviedb.org/3/${type}/${tmdbId}/recommendations?language=fr-FR`,
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.TMDB_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    res.json(response.data);
+    res.json(await tmdbGet(`/${type}/${tmdbId}/recommendations`, { language: "fr-FR" }));
   } catch (error) {
-    console.error("❌ Erreur récupération recommandations TMDB :", error?.response?.data || error);
-    res.status(500).json({ error: "Erreur serveur TMDB" });
+    tmdbError(res, "Erreur recommandations TMDB", error);
   }
 });
 
-// 🔎 Route de recherche TMDB
 app.get("/tmdb/search/:query", async (req, res) => {
-  const { query } = req.params;
+  const query = cleanString(req.params.query, 200);
+  if (!query) return res.status(400).json({ error: "Recherche invalide" });
 
   try {
-    console.log(`🔍 Recherche de : ${query}`);
-    
-    const response = await axios.get(
-      `https://api.themoviedb.org/3/search/multi?query=${encodeURIComponent(query)}&language=fr-FR`,
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.TMDB_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    res.json(response.data.results);
+    const data = await tmdbGet("/search/multi", { query, language: "fr-FR" });
+    res.json(data.results);
   } catch (error) {
-    console.error("❌ Erreur recherche TMDB :", error?.response?.data || error);
-    res.status(500).json({ error: "Erreur serveur TMDB" });
+    tmdbError(res, "Erreur recherche TMDB", error);
   }
 });
 
-// 📌 Charger les genres disponibles
 app.get("/tmdb/genres", async (req, res) => {
   try {
-    const response = await axios.get("https://api.themoviedb.org/3/genre/movie/list?language=fr-FR", {
-      headers: { Authorization: `Bearer ${process.env.TMDB_API_KEY}` },
-    });
-    res.json(response.data.genres);
+    const data = await tmdbGet("/genre/movie/list", { language: "fr-FR" });
+    res.json(data.genres);
   } catch (error) {
-    console.error("❌ Erreur chargement genres :", error);
-    res.status(500).json({ error: "Erreur serveur TMDB" });
+    tmdbError(res, "Erreur chargement genres", error);
   }
 });
 
-// 🔎 Recherche avancée
 app.get("/tmdb/advanced-search", async (req, res) => {
-  const { query, genre, year, minRating, maxDuration, page = 1 } = req.query;
+  const { query, genre, year, minRating, maxDuration } = req.query;
+  const page = Math.min(parseId(req.query.page) || 1, 500);
 
-  let filters = `language=fr-FR&page=${page}`;
-  if (query) filters += `&query=${encodeURIComponent(query)}`;
-  if (genre) filters += `&with_genres=${genre}`;
-  if (year) filters += `&year=${year}`;
-  if (minRating) filters += `&vote_average.gte=${minRating}`;
-  if (maxDuration) filters += `&with_runtime.lte=${maxDuration}`;
+  const params = { language: "fr-FR", page };
+  if (typeof query === "string" && query.trim()) params.query = query.trim().slice(0, 200);
+  if (genre !== undefined && genre !== "") {
+    if (!/^\d+(,\d+)*$/.test(String(genre))) {
+      return res.status(400).json({ error: "Genre invalide" });
+    }
+    params.with_genres = String(genre);
+  }
+  if (year !== undefined && year !== "") {
+    if (!/^\d{4}$/.test(String(year))) return res.status(400).json({ error: "Année invalide" });
+    params.year = String(year);
+  }
+  if (minRating !== undefined && minRating !== "") {
+    const n = Number(minRating);
+    if (!Number.isFinite(n) || n < 0 || n > 10) {
+      return res.status(400).json({ error: "Note minimale invalide" });
+    }
+    params["vote_average.gte"] = n;
+  }
+  if (maxDuration !== undefined && maxDuration !== "") {
+    const n = Number(maxDuration);
+    if (!Number.isInteger(n) || n < 0 || n > 1000) {
+      return res.status(400).json({ error: "Durée maximale invalide" });
+    }
+    params["with_runtime.lte"] = n;
+  }
 
   try {
-    const response = await axios.get(`https://api.themoviedb.org/3/discover/movie?${filters}`, {
-      headers: { Authorization: `Bearer ${process.env.TMDB_API_KEY}` },
-    });
-    res.json(response.data);
+    res.json(await tmdbGet("/discover/movie", params));
   } catch (error) {
-    console.error("❌ Erreur recherche avancée :", error);
-    res.status(500).json({ error: "Erreur serveur TMDB" });
+    tmdbError(res, "Erreur recherche avancée", error);
   }
 });
 
+// ---------- Reviews ----------
+
+// Note moyenne calculée à la volée : uniquement les avis principaux notés
+app.get("/reviews/:tmdbId", async (req, res) => {
+  const tmdbId = parseId(req.params.tmdbId);
+  if (!tmdbId) return res.status(400).json({ error: "Identifiant invalide" });
+
+  try {
+    const reviews = await prisma.review.findMany({
+      where: { movie: { tmdb_id: tmdbId }, parentId: null },
+      include: { user: { select: publicUser } },
+      orderBy: { createdAt: "desc" },
+    });
+
+    res.json({ reviews, avgRating: averageOf(reviews) });
+  } catch (error) {
+    serverError(res, "Erreur récupération avis", error);
+  }
+});
+
+// Avis principal ou réponse, identifié par l'id TMDB du film
 app.post("/reviews", authMiddleware, async (req, res) => {
-  const { movieId, comment, rating, parentId } = req.body;
+  const { movieId, title, media_type, poster_path, comment, rating, parentId } = req.body || {};
   const userId = req.userId;
 
-  console.log("📩 Requête reçue pour une review :", { movieId, comment, rating, parentId, userId });
-
-  if (!comment) {
-    return res.status(400).json({ error: "Le commentaire est requis" });
+  const tmdbId = parseId(movieId);
+  const cleanComment = cleanString(comment, 2000);
+  if (!tmdbId) return res.status(400).json({ error: "Identifiant de film invalide" });
+  if (!cleanComment) {
+    return res.status(400).json({ error: "Le commentaire est requis (2000 caractères max)" });
   }
 
-  if (!userId) {
-    return res.status(401).json({ error: "Utilisateur non authentifié" });
+  const isReply = parentId !== undefined && parentId !== null;
+  const parent = isReply ? parseId(parentId) : null;
+  if (isReply && !parent) return res.status(400).json({ error: "parentId invalide" });
+  if (!isReply && !isValidRating(Number(rating))) {
+    return res.status(400).json({ error: "La note doit être un entier entre 1 et 5." });
   }
 
   try {
-    const reviewData = {
-      comment,
-      user: { connect: { id: userId } },
-      movie: { connect: { tmdb_id: Number(movieId) } },
-      parent: parentId ? { connect: { id: parentId } } : undefined,
-      rating: parentId ? null : Number(rating), // ⬅️ ✅ Ne met PAS de rating si c'est une réponse
-    };
-
-    const review = await prisma.review.create({ data: reviewData });
-
-    // 🔥 Mettre à jour la moyenne des notes SEULEMENT pour les avis principaux
-    if (!parentId) {
-      const avgRating = await prisma.review.aggregate({
-        where: { movieId: Number(movieId), parentId: null }, // On exclut les réponses
-        _avg: { rating: true },
-        _count: { rating: true },
-      });
-
-      await prisma.movie.update({
-        where: { tmdb_id: Number(movieId) },
-        data: {
-          rating: Math.round(avgRating._avg.rating * 10) / 10 || 0,
-          ratingCount: avgRating._count.rating || 0,
+    let movie = await prisma.movie.findUnique({ where: { tmdb_id: tmdbId } });
+    if (!movie) {
+      const cleanTitle = cleanString(title, 300);
+      if (!cleanTitle) return res.status(404).json({ error: "Film introuvable" });
+      movie = await prisma.movie.upsert({
+        where: { tmdb_id: tmdbId },
+        update: {},
+        create: {
+          tmdb_id: tmdbId,
+          title: cleanTitle,
+          media_type: cleanString(media_type, 20) || "movie",
+          poster_path: typeof poster_path === "string" ? poster_path.slice(0, 300) : "",
         },
       });
     }
 
-    res.status(201).json({ message: "Avis ajouté", review });
-  } catch (error) {
-    console.error("❌ Erreur ajout review :", error);
-    res.status(500).json({ error: "Erreur serveur" });
-  }
-});
+    if (isReply) {
+      const parentReview = await prisma.review.findUnique({ where: { id: parent } });
+      if (!parentReview || parentReview.movieId !== movie.id) {
+        return res.status(404).json({ error: "Avis parent introuvable" });
+      }
+    }
 
-
-app.get("/reviews/:tmdbId", async (req, res) => {
-  const { tmdbId } = req.params;
-
-  try {
-    const reviews = await prisma.review.findMany({
-      where: { movie: { tmdb_id: Number(tmdbId) } }, 
-      include: { user: true },
-    });
-
-    // Calculer la moyenne des notes
-    const avgRating =
-      reviews.length > 0
-        ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
-        : null;
-
-    res.json({ reviews, avgRating });
-  } catch (error) {
-    console.error("❌ Erreur récupération avis :", error);
-    res.status(500).json({ error: "Erreur serveur lors de la récupération des avis" });
-  }
-});
-
-app.post("/reviews/:movieId", authMiddleware, async (req, res) => {
-  const { movieId } = req.params;
-  const { rating, comment } = req.body;
-  const userId = req.userId;
-
-  if (!rating || rating < 1 || rating > 5) {
-    return res.status(400).json({ error: "La note doit être entre 1 et 5." });
-  }
-
-  try {
     const review = await prisma.review.create({
       data: {
-        movieId: Number(movieId),
+        comment: cleanComment,
         userId,
-        rating: Number(rating),
-        comment,
+        movieId: movie.id,
+        parentId: isReply ? parent : null,
+        rating: isReply ? null : Number(rating),
       },
+      include: { user: { select: publicUser } },
+    });
+
+    res.status(201).json({ message: "Avis ajouté", review });
+  } catch (error) {
+    serverError(res, "Erreur ajout review", error);
+  }
+});
+
+// Avis principal sur un film identifié par son id interne (page « Vus »)
+app.post("/reviews/:movieId", authMiddleware, async (req, res) => {
+  const movieId = parseId(req.params.movieId);
+  const rating = Number(req.body?.rating);
+  const comment = cleanString(req.body?.comment, 2000);
+
+  if (!movieId) return res.status(400).json({ error: "Identifiant de film invalide" });
+  if (!isValidRating(rating)) {
+    return res.status(400).json({ error: "La note doit être un entier entre 1 et 5." });
+  }
+  if (!comment) {
+    return res.status(400).json({ error: "Le commentaire est requis (2000 caractères max)" });
+  }
+
+  try {
+    const movie = await prisma.movie.findUnique({ where: { id: movieId } });
+    if (!movie) return res.status(404).json({ error: "Film introuvable" });
+
+    const review = await prisma.review.create({
+      data: { movieId, userId: req.userId, rating, comment },
     });
 
     res.status(201).json({ message: "Avis ajouté avec succès", review });
   } catch (error) {
-    console.error("❌ Erreur ajout avis :", error);
-    res.status(500).json({ error: "Erreur serveur" });
+    serverError(res, "Erreur ajout avis", error);
   }
 });
 
 app.get("/reviews/:reviewId/replies", async (req, res) => {
-  const { reviewId } = req.params;
-  const { cursor, limit = 3 } = req.query; // `cursor` = dernière réponse chargée
+  const reviewId = parseId(req.params.reviewId);
+  if (!reviewId) return res.status(400).json({ error: "Identifiant invalide" });
+
+  const limit = Math.min(parseId(req.query.limit) || 3, 50);
+  const cursor = req.query.cursor !== undefined ? parseId(req.query.cursor) : null;
+  if (req.query.cursor !== undefined && !cursor) {
+    return res.status(400).json({ error: "Curseur invalide" });
+  }
 
   try {
     const replies = await prisma.review.findMany({
-      where: { parentId: Number(reviewId) },
+      where: { parentId: reviewId },
       include: {
-        user: true,
+        user: { select: publicUser },
         replies: {
-          include: {
-            user: true,
-          },
+          include: { user: { select: publicUser } },
           orderBy: { createdAt: "asc" },
-          take: Number(limit),
+          take: limit,
         },
       },
-      take: Number(limit) + 1, // On prend +1 pour voir s'il y a encore des réponses après
-      ...(cursor ? { skip: 1, cursor: { id: Number(cursor) } } : {}), // Skip le premier si cursor
-      orderBy: { createdAt: "asc" }, // Afficher du plus ancien au plus récent
+      take: limit + 1,
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+      orderBy: { createdAt: "asc" },
     });
 
-    const hasMore = replies.length > limit; // Vérifier s'il reste d'autres réponses
-    if (hasMore) replies.pop(); // On enlève la réponse en trop
+    const hasMore = replies.length > limit;
+    if (hasMore) replies.pop();
 
     res.json({ replies, hasMore, nextCursor: hasMore ? replies[replies.length - 1].id : null });
   } catch (error) {
-    console.error("❌ Erreur récupération des réponses :", error);
-    res.status(500).json({ error: "Erreur serveur" });
+    serverError(res, "Erreur récupération des réponses", error);
   }
 });
 
-// Route pour mettre à jour le profil utilisateur
-app.put("/account/update", authMiddleware, async (req, res) => {
-  const { username } = req.body;
-  const userId = req.userId;
+// ---------- Fallback SPA ----------
 
-  try {
-    const updatedUser = await prisma.user.update({
-      where: { id: userId },
-      data: { username },
-    });
+// Les requêtes non-HTML (appels API) vers une route inconnue reçoivent un 404 JSON
+app.get("*", (req, res, next) => {
+  if (req.accepts(["json", "html"]) !== "html") return next();
+  sendIndex(res);
+});
 
-    res.status(200).json({ 
-      message: "Profil mis à jour avec succès", 
-      user: {
-        id: updatedUser.id,
-        email: updatedUser.email,
-        username: updatedUser.username
-      }
-    });
-  } catch (error) {
-    console.error("❌ Erreur lors de la mise à jour du profil :", error);
-    res.status(500).json({ error: "Erreur serveur" });
+app.use((req, res) => {
+  res.status(404).json({ error: "Route introuvable" });
+});
+
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  if (err?.type === "entity.parse.failed") {
+    return res.status(400).json({ error: "JSON invalide" });
   }
+  console.error("❌ Erreur non gérée :", err?.message);
+  res.status(500).json({ error: "Erreur serveur" });
 });
 
+const PORT = Number(process.env.PORT) || 3000;
 
-// Servir les fichiers statiques du build
-app.use(express.static(path.join(__dirname, 'dist')));
-
-// Toutes les autres requêtes renvoient vers l'index.html (pour SPA)
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
 });
-
-// Démarrage du serveur
-app.listen(() => {
-  console.log(`Server running on port ${process.env.PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV}`);
-  console.log(`TMDB API Key is ${process.env.TMDB_API_KEY ? 'defined' : 'NOT defined'}`);
-  console.log(`Database URL is ${process.env.DATABASE_URL ? 'defined' : 'NOT defined'}`);
-});
-

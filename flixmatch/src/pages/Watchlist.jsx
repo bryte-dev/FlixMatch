@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { API_URL } from "../api";
 import { Link } from "react-router-dom";
 
 function Watchlist() {
   const [movies, setMovies] = useState([]);
   const [refreshTrigger, setRefreshTrigger] = useState(false);
-  const API_URL = import.meta.env.VITE_API_URL;
 
   useEffect(() => {
     axios.get(`${API_URL}/watchlist`, { withCredentials: true })
@@ -13,7 +13,7 @@ function Watchlist() {
         console.log("Watchlist récupérée :", res.data);
         
         // Filtrer pour ne garder que ceux qui ne sont PAS "SEEN"
-        const filteredMovies = res.data.filter(movie => movie.status !== "SEEN" && "JUNK");
+        const filteredMovies = res.data.filter(movie => movie.status !== "SEEN" && movie.status !== "JUNK");
   
         setMovies(filteredMovies);
       })
@@ -23,7 +23,7 @@ function Watchlist() {
   const moveToJunk = async (movieId) => {
     try {
       // Send request to move the movie to the junk list
-      await axios.put(`${API_URL}/watchlist/${movieId}/junk`);
+      await axios.put(`${API_URL}/watchlist/${movieId}/junk`, {}, { withCredentials: true });
 
       // Immediately update the UI to remove the movie from the watchlist
       setMovies((prevMovies) => prevMovies.filter((movie) => movie.movie.id !== movieId));
@@ -37,7 +37,7 @@ function Watchlist() {
       const newFavoriteStatus = !currentFavorite;
       console.log(`Mise à jour du favori pour ${movieId} -> ${newFavoriteStatus}`);
 
-      await axios.put(`${API_URL}/watchlist/${movieId}/favorite`, { isFavorite: newFavoriteStatus });
+      await axios.put(`${API_URL}/watchlist/${movieId}/favorite`, { isFavorite: newFavoriteStatus }, { withCredentials: true });
 
       setMovies((prevMovies) => 
         prevMovies.map((entry) => 

@@ -48,11 +48,35 @@ FlixMatch appears to focus on making movie discovery and personal curation more 
 
 ```bash
 cd flixmatch
-npm install
-npm run dev
+cp .env.example .env   # then fill in the values
+npm install            # also runs `prisma generate`
+npx prisma migrate deploy
+npm run build && npm start   # app + API on http://localhost:3000
 ```
 
-> TODO: Document the exact backend start command, required environment variables, database setup, and TMDB API configuration.
+For frontend development with hot reload, run `npm start` (API) and `npm run dev` (Vite) side by side and set `VITE_API_URL=http://localhost:3000` and `CORS_ORIGIN=http://localhost:5173`.
+
+## Deploy on Railway
+
+The app is a single Express service that serves the Vite build (`dist`) and the API on the same origin.
+
+1. **New Project → Deploy from GitHub Repo** → `bryte-dev/FlixMatch`.
+2. In the service settings, set **Root Directory** to `flixmatch`.
+3. Add a **PostgreSQL** database to the same project.
+4. In the web service **Variables**, add:
+
+   ```dotenv
+   DATABASE_PUBLIC_URL=${{Postgres.DATABASE_URL}}
+   TMDB_API_KEY=<your TMDB v4 read access token>
+   JWT_SECRET=<long random string, e.g. `openssl rand -hex 32`>
+   NODE_ENV=production
+   ```
+
+   Replace `Postgres` with the actual name of your database service. Do **not** set `PORT` (Railway provides it) and do **not** set `VITE_API_URL` (same origin).
+5. Build command: `npm run build` — Start command: `npm run start` (already in `railway.json`). Start runs `prisma migrate deploy` before launching the server, so migrations are applied when the database is reachable.
+6. **Settings → Networking → Generate Domain**. Health check: `/health`.
+
+In production the server refuses to start if `JWT_SECRET`, `DATABASE_PUBLIC_URL` or `TMDB_API_KEY` is missing. The TMDB key never reaches the browser: all TMDB calls go through the backend (`/tmdb/*`).
 
 ## Notes to Fill In Later
 

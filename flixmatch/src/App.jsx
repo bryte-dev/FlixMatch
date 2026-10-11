@@ -11,7 +11,7 @@ import Junk from "./pages/Junk";
 import Register from "./pages/Register";
 import Account from "./pages/Account";
 import Navbar from "./components/Navbar"; // 🔥 Vérifie que le chemin est bon
-import SearchResults from "./components/SearchBar";
+import SearchResults from "./pages/SearchResults";
 import MovieDetail from "./pages/MovieDetail";
 
 const PrivateRoute = ({ children }) => {

@@ -288,8 +288,7 @@ FlixMatch/
 │   │   │   ├── MovieDetail.jsx      Movie or TV show details
 │   │   │   └── AdvancedSearch.jsx  Advanced TMDB search
 │   │   │
-│   │   ├── services/
-│   │   │   └── tmdb.js             TMDB-related frontend helpers
+│   │   ├── api.js                  API base URL (same-origin, or VITE_API_URL)
 │   │   │
 │   │   ├── assets/                 Frontend assets
 │   │   └── styles/                 Global and page styles
@@ -553,7 +552,8 @@ PUT /junk/:movieId/restore
 ### TMDB Proxy Routes
 
 ```http
-GET /api/config
+GET /health
+GET /tmdb/trending
 GET /tmdb/search/:query
 GET /tmdb/details/:tmdbId/:type
 GET /tmdb/recommendations/:tmdbId/:type

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { API_URL } from "../api";
 import { Link } from "react-router-dom";
 
 function Home() {
@@ -9,7 +10,6 @@ function Home() {
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const API_URL = import.meta.env.VITE_API_URL;
 
   // 🔥 Vérifier si l'utilisateur est connecté
   useEffect(() => {
@@ -46,15 +46,7 @@ function Home() {
     const fetchTrending = async () => {
       setLoading(true);
       try {
-        const response = await fetch(
-          `https://api.themoviedb.org/3/trending/all/day?language=fr-CH&page=${page}`,
-          {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${import.meta.env.VITE_TMDB_API_KEY}`,
-            },
-          }
-        );
+        const response = await fetch(`${API_URL}/tmdb/trending?page=${page}`);
 
         if (!response.ok) throw new Error("Erreur de récupération des données");
 

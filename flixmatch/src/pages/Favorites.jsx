@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { API_URL } from "../api";
 import { Link } from "react-router-dom";
 
 function Favorites() {
   const [movies, setMovies] = useState([]);
   const [refreshTrigger, setRefreshTrigger] = useState(false);
-  const API_URL = import.meta.env.VITE_API_URL;
 
   useEffect(() => {
     fetchFavorites();
