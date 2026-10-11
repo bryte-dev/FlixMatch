@@ -37,6 +37,26 @@ const App = () => {
         <Route path="/account" element={<PrivateRoute><Account /></PrivateRoute>} />
         <Route path="/advanced-search" element={<AdvancedSearch />} />
       </Routes>
+      <footer className="text-center text-sm text-gray-400 py-6">
+        Créé par{" "}
+        <a
+          href="https://github.com/bryte-dev"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline hover:text-white"
+        >
+          bryte-dev
+        </a>
+        {" · "}
+        <a
+          href="https://bryte-dev.github.io"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline hover:text-white"
+        >
+          Site web
+        </a>
+      </footer>
     </AuthProvider>
   );
 };

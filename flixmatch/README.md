@@ -302,7 +302,6 @@ FlixMatch/
 │   ├── server.js                   Express API and production server
 │   ├── package.json                Dependencies and scripts
 │   ├── vite.config.js              Vite configuration
-│   ├── railway.json                Railway deployment configuration
 │   ├── Procfile                    Process start command
 │   └── index.html                  Vite HTML entry point
 │

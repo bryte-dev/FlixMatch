@@ -56,27 +56,28 @@ npm run build && npm start   # app + API on http://localhost:3000
 
 For frontend development with hot reload, run `npm start` (API) and `npm run dev` (Vite) side by side and set `VITE_API_URL=http://localhost:3000` and `CORS_ORIGIN=http://localhost:5173`.
 
-## Deploy on Railway
+## Deploy for free (Render + Neon)
 
 The app is a single Express service that serves the Vite build (`dist`) and the API on the same origin.
 
-1. **New Project → Deploy from GitHub Repo** → `bryte-dev/FlixMatch`.
-2. In the service settings, set **Root Directory** to `flixmatch`.
-3. Add a **PostgreSQL** database to the same project.
-4. In the web service **Variables**, add:
+1. **Database**: create a free project on [Neon](https://neon.tech) and copy the direct (non-pooled) Postgres connection string (ending with `?sslmode=require`).
+2. **App**: on [Render](https://render.com), create a **Web Service** (Free plan) from this GitHub repo, or use the `render.yaml` Blueprint at the repo root.
+   - Root Directory: `flixmatch`
+   - Build Command: `npm install && npm run build`
+   - Start Command: `npm start` (runs `prisma migrate deploy`, then the server)
+   - Health Check Path: `/health`
+3. Environment variables:
 
    ```dotenv
-   DATABASE_PUBLIC_URL=${{Postgres.DATABASE_URL}}
+   DATABASE_PUBLIC_URL=<Neon connection string>
    TMDB_API_KEY=<your TMDB v4 read access token>
    JWT_SECRET=<long random string, e.g. `openssl rand -hex 32`>
    NODE_ENV=production
    ```
 
-   Replace `Postgres` with the actual name of your database service. Do **not** set `PORT` (Railway provides it) and do **not** set `VITE_API_URL` (same origin).
-5. Build command: `npm run build` — Start command: `npm run start` (already in `railway.json`). Start runs `prisma migrate deploy` before launching the server, so migrations are applied when the database is reachable.
-6. **Settings → Networking → Generate Domain**. Health check: `/health`.
+   Do **not** set `PORT` (the host provides it) nor `VITE_API_URL` (same origin).
 
-In production the server refuses to start if `JWT_SECRET`, `DATABASE_PUBLIC_URL` or `TMDB_API_KEY` is missing. The TMDB key never reaches the browser: all TMDB calls go through the backend (`/tmdb/*`).
+Notes: the Render free plan sleeps after ~15 min of inactivity (first request takes 30-60 s). In production the server refuses to start if `JWT_SECRET`, `DATABASE_PUBLIC_URL` or `TMDB_API_KEY` is missing. The TMDB key never reaches the browser.
 
 ## Notes to Fill In Later
 

@@ -42,7 +42,7 @@ const app = express();
 const prisma = new PrismaClient();
 
 app.disable("x-powered-by");
-// Railway place l'application derrière un proxy HTTPS
+// L'hébergeur (Render, etc.) place l'application derrière un proxy HTTPS
 app.set("trust proxy", 1);
 
 // Déploiement same-origin : CORS n'est activé que si CORS_ORIGIN est défini (front séparé en dev).
