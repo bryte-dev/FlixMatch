@@ -1056,16 +1056,9 @@ Applies existing production migrations.
 
 ## Deployment
 
-The repository contains configuration for Railway.
+The repository contains a `render.yaml` Blueprint (Render free plan + Neon PostgreSQL; see the root README).
 
-The Railway configuration uses:
-
-```json
-{
-  "buildCommand": "npm run build",
-  "startCommand": "npm run start"
-}
-```
+Build: `npm install && npm run build` — Start: `npm start`.
 
 A deployment environment must provide at least:
 
