@@ -402,6 +402,18 @@ app.post("/watchlist", authMiddleware, async (req, res) => {
   }
 });
 
+// Retire une entrée de la watchlist (annulation d'un swipe)
+app.delete("/watchlist/:movieId", actionRateLimit, authMiddleware, async (req, res) => {
+  const movieId = parseId(req.params.movieId);
+  if (!movieId) return res.status(400).json({ error: "Identifiant de film invalide" });
+  try {
+    await prisma.watchlist.deleteMany({ where: { movieId, userId: req.userId } });
+    res.json({ message: "Retiré de la bibliothèque" });
+  } catch (error) {
+    serverError(res, "Erreur suppression watchlist", error);
+  }
+});
+
 // Statut d'un titre (id TMDB) dans la bibliothèque de l'utilisateur courant
 app.get("/library/:tmdbId", actionRateLimit, authMiddleware, async (req, res) => {
   const tmdbId = parseId(req.params.tmdbId);
@@ -716,6 +728,80 @@ app.get("/tmdb/advanced-search", async (req, res) => {
     res.json(await tmdbGet("/discover/movie", params));
   } catch (error) {
     tmdbError(res, "Erreur recherche avancée", error);
+  }
+});
+
+// ---------- Découverte (swipe) & « Où regarder » ----------
+
+const REGION_REGEX = /^[A-Z]{2}$/;
+const LANG_REGEX = /^[a-z]{2}-[A-Z]{2}$/;
+const SORTS = ["popularity.desc", "vote_average.desc", "primary_release_date.desc"];
+
+app.get("/tmdb/discover", async (req, res) => {
+  const type = req.query.type === "tv" ? "tv" : "movie";
+  const page = Math.min(parseId(req.query.page) || 1, 500);
+  const language = LANG_REGEX.test(req.query.lang) ? req.query.lang : "fr-FR";
+  const params = {
+    language,
+    page,
+    include_adult: req.query.adult === "true",
+    "vote_count.gte": 100,
+    sort_by: SORTS.includes(req.query.sort) ? req.query.sort : "popularity.desc",
+  };
+  if (req.query.genre) {
+    if (!/^\d+(,\d+)*$/.test(String(req.query.genre))) return res.status(400).json({ error: "Genre invalide" });
+    params.with_genres = String(req.query.genre);
+  }
+  if (req.query.providers) {
+    if (!/^\d+(\|\d+)*$/.test(String(req.query.providers))) return res.status(400).json({ error: "Plateformes invalides" });
+    const region = REGION_REGEX.test(req.query.region) ? req.query.region : "FR";
+    params.with_watch_providers = String(req.query.providers);
+    params.watch_region = region;
+    params.with_watch_monetization_types = "flatrate";
+  }
+  try {
+    const data = await tmdbGet(`/discover/${type}`, params);
+    res.json({
+      ...data,
+      results: (data.results || []).map((r) => ({ ...r, media_type: type })),
+    });
+  } catch (error) {
+    tmdbError(res, "Erreur découverte TMDB", error);
+  }
+});
+
+app.get("/tmdb/providers/:type", async (req, res) => {
+  if (!validType(req.params.type)) return res.status(400).json({ error: "Type invalide" });
+  const region = REGION_REGEX.test(req.query.region) ? req.query.region : "FR";
+  try {
+    const data = await tmdbGet(`/watch/providers/${req.params.type}`, { watch_region: region, language: "fr-FR" });
+    res.json(
+      (data.results || [])
+        .sort((a, b) => (a.display_priority ?? 999) - (b.display_priority ?? 999))
+        .map((p) => ({ id: p.provider_id, name: p.provider_name, logo_path: p.logo_path }))
+    );
+  } catch (error) {
+    tmdbError(res, "Erreur plateformes TMDB", error);
+  }
+});
+
+// Où regarder un titre dans une région (données JustWatch fournies par TMDB)
+app.get("/tmdb/watch/:type/:tmdbId", async (req, res) => {
+  const tmdbId = parseId(req.params.tmdbId);
+  if (!tmdbId || !validType(req.params.type)) return res.status(400).json({ error: "Paramètres invalides" });
+  const region = REGION_REGEX.test(req.query.region) ? req.query.region : "FR";
+  try {
+    const data = await tmdbGet(`/${req.params.type}/${tmdbId}/watch/providers`);
+    const entry = data.results?.[region] || {};
+    res.json({
+      region,
+      link: entry.link || null,
+      flatrate: entry.flatrate || [],
+      rent: entry.rent || [],
+      buy: entry.buy || [],
+    });
+  } catch (error) {
+    tmdbError(res, "Erreur où regarder TMDB", error);
   }
 });
 

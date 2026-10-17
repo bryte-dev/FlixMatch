@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 
 export function Spinner({ className = "h-4 w-4" }) {
@@ -136,6 +137,40 @@ export function StarRating({ value = 0, onChange, pending = false, label = "Note
           <span key={star}>{glyph}</span>
         );
       })}
+    </div>
+  );
+}
+
+// Bottom sheet sur mobile, modale centrée sur desktop. Fermeture : Échap, clic sur le fond, bouton.
+export function BottomSheet({ open, onClose, title, children }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const previous = document.activeElement;
+    ref.current?.focus();
+    const onKey = (e) => e.key === "Escape" && onClose?.();
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      previous?.focus?.();
+    };
+  }, [open, onClose]);
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/60 sm:items-center" onClick={onClose}>
+      <div
+        ref={ref}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(e) => e.stopPropagation()}
+        className="sheet surface safe-bottom max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-b-none p-5 outline-none sm:rounded-2xl"
+      >
+        <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-white/20 sm:hidden" aria-hidden="true" />
+        <h2 className="mb-3 text-lg font-bold">{title}</h2>
+        {children}
+      </div>
     </div>
   );
 }
