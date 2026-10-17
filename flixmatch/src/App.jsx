@@ -14,6 +14,9 @@ import Account from "./pages/Account";
 import Discover from "./pages/Discover";
 import Settings from "./pages/Settings";
 import Import from "./pages/Import";
+import Profile from "./pages/Profile";
+import Activity from "./pages/Activity";
+import Join from "./pages/Join";
 import Navbar from "./components/Navbar";
 import TabBar from "./components/TabBar";
 import { useKonami, useTheme } from "./theme";
@@ -63,6 +66,9 @@ const Shell = () => {
           <Route path="/discover" element={<Discover />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/import" element={<PrivateRoute><Import /></PrivateRoute>} />
+          <Route path="/u/:id" element={<Profile />} />
+          <Route path="/activity" element={<PrivateRoute><Activity /></PrivateRoute>} />
+          <Route path="/join/:code" element={<Join />} />
           <Route path="/search" element={<SearchResults />} />
           <Route path="/search/:query" element={<SearchResults />} />
           <Route path="/watchlist" element={<PrivateRoute><Watchlist /></PrivateRoute>} />

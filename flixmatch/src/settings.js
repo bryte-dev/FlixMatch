@@ -9,6 +9,7 @@ export const DEFAULT_SETTINGS = {
   providers: [],
   metaLang: "fr-FR",
   adult: false,
+  uiLang: "fr",
 };
 
 export const SWIPE_ACTIONS = {

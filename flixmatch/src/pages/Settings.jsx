@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { AuthContext } from "../AuthContext";
 import { useToast } from "../toastContext";
 import { SWIPE_ACTIONS, saveSettings, useSettings } from "../settings";
+import { LANGUAGES, useT } from "../i18n";
 import { THEMES, isUnlocked } from "../theme";
 import { Button, PageHeader } from "../components/ui";
 import { posterUrl } from "../utils";
@@ -32,6 +33,7 @@ export default function Settings() {
   const { user } = useContext(AuthContext);
   const toast = useToast();
   const settings = useSettings();
+  const t = useT();
   const [providers, setProviders] = useState([]);
   const [unlocked, setUnlocked] = useState(isUnlocked);
   const [exporting, setExporting] = useState(false);
@@ -91,6 +93,12 @@ export default function Settings() {
           ))}
         </div>
         {!unlocked && <p className="text-xs text-zinc-500">Des thèmes secrets se cachent quelque part… (indice : un code célèbre des années 80, ou le logo)</p>}
+      </Section>
+
+      <Section title={t("uiLanguage")}>
+        <select className="field" aria-label={t("uiLanguage")} value={settings.uiLang} onChange={(e) => saveSettings({ uiLang: e.target.value })}>
+          {Object.entries(LANGUAGES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
       </Section>
 
       <Section title="Découverte (swipe)">

@@ -4,20 +4,21 @@ import { saveSettings } from "../settings";
 import { unlockThemes } from "../theme";
 import { AuthContext } from "../AuthContext";
 import { FiHome, FiBookmark, FiStar, FiEye, FiTrash2, FiSliders, FiLayers, FiSettings, FiUser, FiMenu, FiX, FiLogOut } from "react-icons/fi";
+import { useT } from "../i18n";
 import SearchBar from "./SearchBar";
 import { useToast } from "../toastContext";
 
 const PUBLIC_LINKS = [
-  { to: "/", label: "Accueil", icon: FiHome, end: true },
-  { to: "/discover", label: "Découverte", icon: FiLayers },
-  { to: "/advanced-search", label: "Recherche avancée", short: "Recherche", icon: FiSliders },
+  { to: "/", key: "home", label: "Accueil", icon: FiHome, end: true },
+  { to: "/discover", key: "discover", label: "Découverte", icon: FiLayers },
+  { to: "/advanced-search", key: "advancedSearch", label: "Recherche avancée", short: "Recherche", icon: FiSliders },
 ];
 
 const PRIVATE_LINKS = [
-  { to: "/watchlist", label: "À voir", icon: FiBookmark },
-  { to: "/favorites", label: "Favoris", icon: FiStar },
-  { to: "/seen", label: "Vus", icon: FiEye },
-  { to: "/junk", label: "Corbeille", icon: FiTrash2 },
+  { to: "/watchlist", key: "watchlist", label: "À voir", icon: FiBookmark },
+  { to: "/favorites", key: "favorites", label: "Favoris", icon: FiStar },
+  { to: "/seen", key: "seen", label: "Vus", icon: FiEye },
+  { to: "/junk", key: "trash", label: "Corbeille", icon: FiTrash2 },
 ];
 
 const linkClass = ({ isActive }) =>
@@ -27,6 +28,7 @@ const linkClass = ({ isActive }) =>
 
 function Navbar() {
   const { user, logout } = useContext(AuthContext);
+  const t = useT();
   const [menuOpen, setMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const navigate = useNavigate();
@@ -79,11 +81,11 @@ function Navbar() {
         </Link>
 
         <nav className="ml-2 hidden items-center gap-1 md:flex" aria-label="Navigation principale">
-          {links.map(({ to, label, icon: Icon, end }) => (
-            <NavLink key={to} to={to} end={end} className={linkClass} title={label}>
+          {links.map(({ to, key: k, label, icon: Icon, end }) => (
+            <NavLink key={to} to={to} end={end} className={linkClass} title={k ? t(k) : label}>
               <Icon aria-hidden="true" />
-              <span className="hidden xl:inline">{label}</span>
-              <span className="sr-only xl:hidden">{label}</span>
+              <span className="hidden xl:inline">{k ? t(k) : label}</span>
+              <span className="sr-only xl:hidden">{k ? t(k) : label}</span>
             </NavLink>
           ))}
         </nav>
@@ -139,9 +141,9 @@ function Navbar() {
         <div id="menu-mobile" className="border-t border-white/10 bg-ink-900/95 px-4 pb-4 pt-3 md:hidden">
           <SearchBar onNavigate={closeMenu} className="mb-3" />
           <nav className="flex flex-col gap-1" aria-label="Navigation mobile">
-            {links.map(({ to, label, icon: Icon, end }) => (
+            {links.map(({ to, key: k, label, icon: Icon, end }) => (
               <NavLink key={to} to={to} end={end} className={linkClass} onClick={closeMenu}>
-                <Icon aria-hidden="true" /> {label}
+                <Icon aria-hidden="true" /> {k ? t(k) : label}
               </NavLink>
             ))}
             {user ? (

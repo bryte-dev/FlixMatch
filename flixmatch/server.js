@@ -232,7 +232,7 @@ app.get("/me", authMiddleware, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.userId },
-      select: { id: true, email: true, username: true },
+      select: { id: true, email: true, username: true, avatar: true, privacyProfile: true, privacyLibrary: true, privacyActivity: true },
     });
 
     if (!user) return res.status(404).json({ error: "Utilisateur introuvable" });
@@ -313,36 +313,240 @@ app.post("/logout", (req, res) => {
   res.json({ message: "Déconnexion réussie" });
 });
 
-app.put("/account/update", authMiddleware, async (req, res) => {
-  const { username } = req.body || {};
+const PRIVACY_LEVELS = ["public", "friends", "private"];
+const AVATAR_REGEX = /^(preset:[a-z0-9-]{1,20}|generated|data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+)$/;
+const MAX_AVATAR_LENGTH = 70000;
+const accountSelect = { id: true, email: true, username: true, avatar: true, privacyProfile: true, privacyLibrary: true, privacyActivity: true };
 
-  let cleanUsername = null;
-  if (username !== undefined && username !== null && username !== "") {
-    cleanUsername = cleanString(username, 50);
-    if (!cleanUsername) {
-      return res.status(400).json({ error: "Nom d'utilisateur invalide (50 caractères max)" });
+app.put("/account/update", authMiddleware, async (req, res) => {
+  const { username, avatar, privacyProfile, privacyLibrary, privacyActivity } = req.body || {};
+  const data = {};
+
+  if (username !== undefined) {
+    if (username === null || username === "") data.username = null;
+    else {
+      data.username = cleanString(username, 50);
+      if (!data.username) return res.status(400).json({ error: "Nom d'utilisateur invalide (50 caractères max)" });
     }
+  }
+  if (avatar !== undefined) {
+    if (avatar === null || avatar === "") data.avatar = null;
+    else if (typeof avatar === "string" && avatar.length <= MAX_AVATAR_LENGTH && AVATAR_REGEX.test(avatar)) data.avatar = avatar;
+    else return res.status(400).json({ error: "Avatar invalide (image 70 Ko max)" });
+  }
+  for (const [field, value] of Object.entries({ privacyProfile, privacyLibrary, privacyActivity })) {
+    if (value === undefined) continue;
+    if (!PRIVACY_LEVELS.includes(value)) return res.status(400).json({ error: "Niveau de confidentialité invalide" });
+    data[field] = value;
   }
 
   try {
-    const updatedUser = await prisma.user.update({
-      where: { id: req.userId },
-      data: { username: cleanUsername },
-    });
-
-    res.status(200).json({
-      message: "Profil mis à jour avec succès",
-      user: {
-        id: updatedUser.id,
-        email: updatedUser.email,
-        username: updatedUser.username,
-      },
-    });
+    const updatedUser = await prisma.user.update({ where: { id: req.userId }, data, select: accountSelect });
+    res.status(200).json({ message: "Profil mis à jour avec succès", user: updatedUser });
   } catch (error) {
     if (error?.code === "P2025") {
       return res.status(404).json({ error: "Utilisateur introuvable" });
     }
     serverError(res, "Erreur mise à jour profil", error);
+  }
+});
+
+// Suppression définitive du compte (mot de passe requis) et de toutes ses données
+app.delete("/account", authRateLimit, authMiddleware, async (req, res) => {
+  const { password } = req.body || {};
+  if (typeof password !== "string" || !password) return res.status(400).json({ error: "Mot de passe requis" });
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(403).json({ error: "Mot de passe incorrect" });
+    }
+    // Avis de l'utilisateur + toutes les réponses qui en dépendent (arbre de réponses), puis le reste
+    const toDelete = new Set((await prisma.review.findMany({ where: { userId: req.userId }, select: { id: true } })).map((r) => r.id));
+    let frontier = [...toDelete];
+    while (frontier.length > 0) {
+      const children = await prisma.review.findMany({ where: { parentId: { in: frontier }, id: { notIn: [...toDelete] } }, select: { id: true } });
+      frontier = children.map((c) => c.id);
+      frontier.forEach((id) => toDelete.add(id));
+    }
+    // Feuilles d'abord (les ids les plus récents sont les plus profonds) pour respecter la clé étrangère
+    const ids = [...toDelete].sort((x, y) => y - x);
+    await prisma.$transaction([
+      ...ids.map((id) => prisma.review.deleteMany({ where: { id } })),
+      prisma.watchlist.deleteMany({ where: { userId: req.userId } }),
+    ]);
+    await prisma.user.delete({ where: { id: req.userId } });
+    res.clearCookie("token", cookieOptions);
+    res.json({ message: "Compte supprimé" });
+  } catch (error) {
+    serverError(res, "Erreur suppression du compte", error);
+  }
+});
+
+// ---------- Social léger : profils, followers, invitations, fil d'activité ----------
+
+const optionalAuth = (req, res, next) => {
+  const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
+  try {
+    req.userId = token ? jwt.verify(token, JWT_SECRET).userId : null;
+  } catch {
+    req.userId = null;
+  }
+  next();
+};
+
+const isMutual = async (a, b) => {
+  if (!a || !b) return false;
+  const count = await prisma.follow.count({
+    where: { OR: [{ followerId: a, followingId: b }, { followerId: b, followingId: a }] },
+  });
+  return count === 2;
+};
+
+const canView = async (level, viewerId, ownerId) => {
+  if (viewerId && viewerId === ownerId) return true;
+  if (level === "public") return true;
+  if (level === "friends") return isMutual(viewerId, ownerId);
+  return false;
+};
+
+const publicCard = { id: true, username: true, avatar: true };
+
+app.get("/users/search", actionRateLimit, optionalAuth, async (req, res) => {
+  const q = cleanString(req.query.q, 50);
+  if (!q || q.length < 2) return res.json([]);
+  try {
+    const users = await prisma.user.findMany({
+      where: { username: { contains: q, mode: "insensitive" }, privacyProfile: { not: "private" } },
+      select: publicCard,
+      take: 20,
+    });
+    res.json(users);
+  } catch (error) {
+    serverError(res, "Erreur recherche d'utilisateurs", error);
+  }
+});
+
+// Code d'invitation de l'utilisateur courant (créé à la demande)
+app.get("/invite", authMiddleware, async (req, res) => {
+  try {
+    let user = await prisma.user.findUnique({ where: { id: req.userId }, select: { inviteCode: true } });
+    if (!user) return res.status(404).json({ error: "Utilisateur introuvable" });
+    if (!user.inviteCode) {
+      user = await prisma.user.update({
+        where: { id: req.userId },
+        data: { inviteCode: crypto.randomBytes(6).toString("base64url") },
+        select: { inviteCode: true },
+      });
+    }
+    res.json({ code: user.inviteCode });
+  } catch (error) {
+    serverError(res, "Erreur code d'invitation", error);
+  }
+});
+
+app.get("/invite/:code", actionRateLimit, async (req, res) => {
+  const code = cleanString(req.params.code, 32);
+  if (!code) return res.status(400).json({ error: "Code invalide" });
+  try {
+    const user = await prisma.user.findUnique({ where: { inviteCode: code }, select: publicCard });
+    if (!user) return res.status(404).json({ error: "Invitation introuvable" });
+    res.json(user);
+  } catch (error) {
+    serverError(res, "Erreur invitation", error);
+  }
+});
+
+// Fil d'activité des personnes suivies (avis, épisodes, ajouts) — déclaré avant /users/:id
+app.get("/feed", actionRateLimit, authMiddleware, async (req, res) => {
+  try {
+    const followed = await prisma.follow.findMany({ where: { followerId: req.userId }, select: { followingId: true } });
+    const ids = followed.map((f) => f.followingId);
+    if (ids.length === 0) return res.json([]);
+    // On ne garde que les amis qui acceptent de partager leur activité avec l'utilisateur
+    const owners = await prisma.user.findMany({ where: { id: { in: ids } }, select: { ...publicCard, privacyActivity: true } });
+    const visible = [];
+    for (const o of owners) if (await canView(o.privacyActivity, req.userId, o.id)) visible.push(o);
+    const visibleIds = visible.map((o) => o.id);
+    if (visibleIds.length === 0) return res.json([]);
+    const byId = new Map(visible.map((o) => [o.id, { id: o.id, username: o.username, avatar: o.avatar }]));
+
+    const [library, reviews, episodes] = await Promise.all([
+      prisma.watchlist.findMany({ where: { userId: { in: visibleIds } }, orderBy: { createdAt: "desc" }, take: 30, include: { movie: true } }),
+      prisma.review.findMany({ where: { userId: { in: visibleIds }, parentId: null }, orderBy: { createdAt: "desc" }, take: 30, include: { movie: true } }),
+      prisma.episodeWatch.findMany({ where: { userId: { in: visibleIds } }, orderBy: { watchedAt: "desc" }, take: 30 }),
+    ]);
+    const items = [
+      ...library.map((e) => ({ type: e.status === "SEEN" ? "seen" : "watchlist", at: e.createdAt, user: byId.get(e.userId), media: { tmdb_id: e.movie.tmdb_id, title: e.movie.title, media_type: e.movie.media_type, poster_path: e.movie.poster_path } })),
+      ...reviews.map((r) => ({ type: "review", at: r.createdAt, user: byId.get(r.userId), rating: r.rating, media: { tmdb_id: r.movie.tmdb_id, title: r.movie.title, media_type: r.movie.media_type, poster_path: r.movie.poster_path } })),
+      ...episodes.map((e) => ({ type: "episode", at: e.watchedAt, user: byId.get(e.userId), media: { tmdb_id: e.tmdbSeriesId, media_type: "tv", title: null }, season: e.seasonNumber, episode: e.episodeNumber })),
+    ]
+      .sort((a, b) => new Date(b.at) - new Date(a.at))
+      .slice(0, 40);
+    res.json(items);
+  } catch (error) {
+    serverError(res, "Erreur fil d'activité", error);
+  }
+});
+
+app.get("/users/:id", actionRateLimit, optionalAuth, async (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant invalide" });
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: { ...publicCard, privacyProfile: true, privacyLibrary: true, privacyActivity: true, _count: { select: { followers: true, following: true } } },
+    });
+    if (!user) return res.status(404).json({ error: "Utilisateur introuvable" });
+
+    const viewerId = req.userId;
+    const following = viewerId ? (await prisma.follow.count({ where: { followerId: viewerId, followingId: id } })) > 0 : false;
+    const base = { id: user.id, username: user.username, avatar: user.avatar, followers: user._count.followers, following: user._count.following, isSelf: viewerId === id, isFollowing: following };
+
+    if (!(await canView(user.privacyProfile, viewerId, id))) return res.json({ ...base, restricted: true });
+
+    const out = { ...base, restricted: false };
+    if (await canView(user.privacyLibrary, viewerId, id)) {
+      const [seen, series, episodes] = await Promise.all([
+        prisma.watchlist.count({ where: { userId: id, status: "SEEN", movie: { media_type: "movie" } } }),
+        prisma.watchlist.count({ where: { userId: id, movie: { media_type: "tv" }, status: { not: "JUNK" } } }),
+        prisma.episodeWatch.aggregate({ where: { userId: id }, _count: { _all: true }, _sum: { runtime: true } }),
+      ]);
+      const minutes = (episodes._sum.runtime || 0) + seen * 105; // durée moyenne estimée pour les films
+      out.stats = { moviesSeen: seen, seriesFollowed: series, episodesWatched: episodes._count._all, hoursWatched: Math.round(minutes / 60) };
+      const favorites = await prisma.watchlist.findMany({ where: { userId: id, isFavorite: true }, include: { movie: true }, take: 12 });
+      out.favorites = favorites.map((f) => ({ tmdb_id: f.movie.tmdb_id, title: f.movie.title, media_type: f.movie.media_type, poster_path: f.movie.poster_path }));
+    }
+    res.json(out);
+  } catch (error) {
+    serverError(res, "Erreur profil", error);
+  }
+});
+
+app.post("/users/:id/follow", actionRateLimit, authMiddleware, async (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id || id === req.userId) return res.status(400).json({ error: "Identifiant invalide" });
+  try {
+    const target = await prisma.user.findUnique({ where: { id }, select: { id: true } });
+    if (!target) return res.status(404).json({ error: "Utilisateur introuvable" });
+    await prisma.follow.upsert({
+      where: { followerId_followingId: { followerId: req.userId, followingId: id } },
+      update: {},
+      create: { followerId: req.userId, followingId: id },
+    });
+    res.status(201).json({ message: "Abonné" });
+  } catch (error) {
+    serverError(res, "Erreur abonnement", error);
+  }
+});
+
+app.delete("/users/:id/follow", actionRateLimit, authMiddleware, async (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant invalide" });
+  try {
+    await prisma.follow.deleteMany({ where: { followerId: req.userId, followingId: id } });
+    res.json({ message: "Désabonné" });
+  } catch (error) {
+    serverError(res, "Erreur désabonnement", error);
   }
 });
 

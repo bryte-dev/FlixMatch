@@ -15,6 +15,27 @@ model User {
   watchlist Watchlist[]
   reviews  Review[]  // 🔥 Un utilisateur peut écrire plusieurs reviews
   episodeWatches EpisodeWatch[]
+  avatar           String?
+  inviteCode       String?  @unique
+  privacyProfile   String   @default("public") // public | friends | private
+  privacyLibrary   String   @default("public")
+  privacyActivity  String   @default("public")
+  followers        Follow[] @relation("Followed")
+  following        Follow[] @relation("Follower")
+}
+
+// followerId suit followingId
+model Follow {
+  id          Int      @id @default(autoincrement())
+  followerId  Int
+  followingId Int
+  createdAt   DateTime @default(now())
+
+  follower  User @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("Followed", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followingId])
 }
 
 model Movie {
@@ -34,6 +55,7 @@ model Watchlist {
   isFavorite Boolean @default(false)
   status     String  @default("WATCHLIST")
   rating     Int?    
+  createdAt  DateTime @default(now())
 
   movie Movie @relation(fields: [movieId], references: [id])
   user  User  @relation(fields: [userId], references: [id])
