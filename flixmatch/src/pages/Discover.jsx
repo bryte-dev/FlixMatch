@@ -6,6 +6,7 @@ import { API_URL } from "../api";
 import { AuthContext } from "../AuthContext";
 import { useToast } from "../toastContext";
 import { useSettings } from "../settings";
+import RatingBadges from "../components/RatingBadges";
 import SwipeCard from "../components/SwipeCard";
 import { BottomSheet, Button, EmptyState, ErrorState, Spinner } from "../components/ui";
 import { errorMessage, mediaTitle, mediaYear, posterUrl } from "../utils";
@@ -159,18 +160,20 @@ export default function Discover() {
   const top = deck[0];
 
   const addToLibrary = async (item, direction) => {
-    const res = await axios
-      .post(`${API_URL}/watchlist`, {
+    let movieId;
+    try {
+      const res = await axios.post(`${API_URL}/watchlist`, {
         tmdb_id: item.id,
         title: mediaTitle(item),
         media_type: item.media_type,
         poster_path: item.poster_path || "",
-      })
-      .catch((err) => {
-        if (err.response?.data?.movieId) return err; // déjà présent : on continue avec son id
-        throw err;
       });
-    const movieId = res.data?.movieId || res.response?.data?.movieId;
+      movieId = res.data.movieId;
+    } catch (err) {
+      // Déjà présent : le serveur renvoie son identifiant, on continue avec
+      movieId = err.response?.data?.movieId;
+      if (!movieId) throw err;
+    }
     if (direction === "up") await axios.put(`${API_URL}/watchlist/${movieId}/seen`);
     else if (settings.swipeAction === "favorites") await axios.put(`${API_URL}/watchlist/${movieId}/favorite`, { isFavorite: true });
     return movieId;
@@ -272,10 +275,11 @@ export default function Discover() {
                   draggable={false}
                   className="h-full w-full object-cover"
                 />
+                <RatingBadges tmdb={top.vote_average} tmdbVotes={top.vote_count} className="absolute left-3 top-3" />
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-4 pt-16 text-white">
                   <h2 className="text-xl font-bold leading-tight">{mediaTitle(top)}</h2>
                   <p className="mb-1 text-xs text-zinc-300">
-                    {[top.media_type === "tv" ? "Série" : "Film", mediaYear(top), top.vote_average ? `★ ${top.vote_average.toFixed(1)} TMDB` : ""].filter(Boolean).join(" · ")}
+                    {[top.media_type === "tv" ? "Série" : "Film", mediaYear(top)].filter(Boolean).join(" · ")}
                   </p>
                   <p className="mb-2 line-clamp-2 text-xs text-zinc-300">{top.overview}</p>
                   <WhereToWatch item={top} region={settings.region} myProviders={settings.providers} />

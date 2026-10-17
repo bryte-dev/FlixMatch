@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { classifySwipe, swipeIndicators } from "../lib/swipe";
 
 const vibrate = (ms) => {
@@ -15,6 +15,8 @@ const STAMPS = {
 // Carte glissable (Pointer Events). Animations GPU : transform + opacity uniquement.
 const SwipeCard = forwardRef(function SwipeCard({ onSwipe, children, disabled = false }, ref) {
   const start = useRef(null);
+  const timer = useRef(null);
+  useEffect(() => () => clearTimeout(timer.current), []);
   const [drag, setDrag] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const [leaving, setLeaving] = useState(null);
@@ -25,7 +27,7 @@ const SwipeCard = forwardRef(function SwipeCard({ onSwipe, children, disabled = 
     // Inertie : la carte part dans la direction du geste puis on notifie le parent
     const out = { right: { x: 700, y: dy }, left: { x: -700, y: dy }, up: { x: dx, y: -900 } }[direction];
     setDrag(out);
-    setTimeout(() => onSwipe(direction), 220);
+    timer.current = setTimeout(() => onSwipe(direction), 220);
   };
 
   // Déclenchement par bouton / clavier

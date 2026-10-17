@@ -174,3 +174,39 @@ export function BottomSheet({ open, onClose, title, children }) {
     </div>
   );
 }
+
+// Déclenche `onVisible` quand l'élément entre dans la vue (scroll infini)
+export function InfiniteSentinel({ onVisible, disabled = false }) {
+  const ref = useRef(null);
+  const callback = useRef(onVisible);
+  useEffect(() => {
+    callback.current = onVisible;
+  });
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || disabled) return undefined;
+    const observer = new IntersectionObserver((entries) => entries[0].isIntersecting && callback.current(), { rootMargin: "400px" });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [disabled]);
+  return <div ref={ref} className="h-px" aria-hidden="true" />;
+}
+
+export function Tabs({ tabs, value, onChange, label }) {
+  return (
+    <div className="mb-5 flex gap-1 overflow-x-auto" role="tablist" aria-label={label}>
+      {tabs.map(([id, text]) => (
+        <button
+          key={id}
+          type="button"
+          role="tab"
+          aria-selected={value === id}
+          onClick={() => onChange(id)}
+          className={`btn btn-sm shrink-0 ${value === id ? "btn-primary" : "btn-secondary"}`}
+        >
+          {text}
+        </button>
+      ))}
+    </div>
+  );
+}

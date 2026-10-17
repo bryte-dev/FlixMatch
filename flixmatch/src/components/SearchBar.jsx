@@ -4,6 +4,7 @@ import axios from "axios";
 import { API_URL } from "../api";
 import { FiSearch } from "react-icons/fi";
 import { Spinner } from "./ui";
+import { getSettings } from "../settings";
 import { mediaTitle, posterUrl } from "../utils";
 
 function SearchBar({ onNavigate, className = "" }) {
@@ -32,6 +33,7 @@ function SearchBar({ onNavigate, className = "" }) {
       try {
         const res = await axios.get(`${API_URL}/tmdb/search/${encodeURIComponent(term)}`, {
           signal: controller.signal,
+          params: { lang: getSettings().metaLang },
         });
         setResults(res.data.slice(0, 6));
         setOpen(true);

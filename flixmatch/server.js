@@ -9,6 +9,9 @@ import axios from "axios";
 import path from "path";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
+import { isAired } from "./src/lib/episodes.js";
+import { getImdbRating } from "./services/omdb.js";
+import { mergeSearchResults } from "./src/lib/searchMerge.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -109,10 +112,16 @@ const publicUser = { id: true, username: true };
 const withReplyCount = { _count: { select: { replies: true } } };
 
 // Numéros de saison/épisode TMDB (0 = épisodes spéciaux)
+const REGION_REGEX = /^[A-Z]{2}$/;
+const LANG_REGEX = /^[a-z]{2}-[A-Z]{2}$/;
+const langOf = (value) => (LANG_REGEX.test(value) ? value : "fr-FR");
+
 const parseNumber = (value, max = 10000) => {
   const n = Number(value);
   return /^\d+$/.test(String(value)) && Number.isInteger(n) && n >= 0 && n <= max ? n : null;
 };
+
+const countRated = (reviews) => reviews.filter((r) => r.parentId == null && r.rating != null).length;
 
 const averageOf = (reviews) => {
   const rated = reviews.filter(
@@ -569,7 +578,7 @@ app.get("/tmdb/details/:tmdbId/:type", async (req, res) => {
   try {
     const movieDetails = await tmdbGet(`/${type}/${tmdbId}`, {
       language: "fr-FR",
-      append_to_response: "credits,videos,images,watch/providers",
+      append_to_response: "credits,videos,images,watch/providers,external_ids",
     });
 
     let reviews = [];
@@ -590,10 +599,14 @@ app.get("/tmdb/details/:tmdbId/:type", async (req, res) => {
     }
 
     const average = averageOf(reviews);
+    const imdb = await getImdbRating(movieDetails.imdb_id || movieDetails.external_ids?.imdb_id);
 
     res.json({
       ...movieDetails,
       flixmatchRating: average === null ? null : average.toFixed(1),
+      flixmatchVotes: countRated(reviews),
+      imdbRating: imdb?.rating ?? null,
+      imdbVotes: imdb?.votes ?? null,
       reviews,
     });
   } catch (error) {
@@ -617,13 +630,46 @@ app.get("/tmdb/recommendations/:tmdbId/:type", async (req, res) => {
   }
 });
 
+// Recherche multilingue : la requête part dans la langue de l'utilisateur ET en en-US (les titres
+// originaux sont aussi indexés par TMDB), puis les résultats sont fusionnés et dédupliqués.
+const SEARCH_ENDPOINTS = { all: "multi", movie: "movie", tv: "tv", person: "person" };
+
+const multiSearch = async (query, type, page, lang) => {
+  const languages = [...new Set([lang, "en-US"])];
+  const settled = await Promise.allSettled(
+    languages.map((language) => tmdbGet(`/search/${SEARCH_ENDPOINTS[type]}`, { query, language, page, include_adult: false }))
+  );
+  const fulfilled = settled.filter((r) => r.status === "fulfilled").map((r) => r.value);
+  if (fulfilled.length === 0) throw settled[0].reason;
+  const lists = fulfilled.map((data) =>
+    (data.results || []).map((r) => (type === "all" ? r : { ...r, media_type: type }))
+  );
+  return {
+    page,
+    total_pages: Math.max(...fulfilled.map((d) => d.total_pages || 1)),
+    results: mergeSearchResults(lists),
+  };
+};
+
 app.get("/tmdb/search/:query", async (req, res) => {
   const query = cleanString(req.params.query, 200);
   if (!query) return res.status(400).json({ error: "Recherche invalide" });
 
   try {
-    const data = await tmdbGet("/search/multi", { query, language: "fr-FR" });
+    const data = await multiSearch(query, "all", 1, langOf(req.query.lang));
     res.json(data.results);
+  } catch (error) {
+    tmdbError(res, "Erreur recherche TMDB", error);
+  }
+});
+
+app.get("/tmdb/search", async (req, res) => {
+  const query = cleanString(req.query.query, 200);
+  const type = Object.hasOwn(SEARCH_ENDPOINTS, req.query.type) ? req.query.type : "all";
+  if (!query) return res.status(400).json({ error: "Recherche invalide" });
+
+  try {
+    res.json(await multiSearch(query, type, Math.min(parseId(req.query.page) || 1, 500), langOf(req.query.lang)));
   } catch (error) {
     tmdbError(res, "Erreur recherche TMDB", error);
   }
@@ -677,10 +723,12 @@ app.get("/tmdb/genres", async (req, res) => {
 });
 
 app.get("/tmdb/advanced-search", async (req, res) => {
-  const { query, genre, year, minRating, maxDuration } = req.query;
+  const { query, genre, year, minRating, maxDuration, originalLanguage, providers, sort } = req.query;
+  const type = req.query.type === "tv" ? "tv" : "movie";
   const page = Math.min(parseId(req.query.page) || 1, 500);
+  const language = langOf(req.query.lang);
 
-  const params = { language: "fr-FR", page };
+  const params = { language, page };
   if (typeof query === "string" && query.trim()) params.query = query.trim().slice(0, 200);
   if (genre !== undefined && genre !== "") {
     if (!/^\d+(,\d+)*$/.test(String(genre))) {
@@ -706,26 +754,58 @@ app.get("/tmdb/advanced-search", async (req, res) => {
     }
     params["with_runtime.lte"] = n;
   }
+  if (originalLanguage !== undefined && originalLanguage !== "") {
+    if (!/^[a-z]{2,3}$/.test(String(originalLanguage))) return res.status(400).json({ error: "Langue originale invalide" });
+    params.with_original_language = String(originalLanguage);
+  }
+  if (providers !== undefined && providers !== "") {
+    if (!/^\d+(\|\d+)*$/.test(String(providers))) return res.status(400).json({ error: "Plateformes invalides" });
+    params.with_watch_providers = String(providers);
+    params.watch_region = REGION_REGEX.test(req.query.region) ? req.query.region : "FR";
+    params.with_watch_monetization_types = "flatrate";
+  }
+  const dateField = type === "tv" ? "first_air_date" : "primary_release_date";
+  const sortMap = {
+    popularity: "popularity.desc",
+    rating: "vote_average.desc",
+    date: `${dateField}.desc`,
+  };
+  const sortBy = sortMap[sort] || sortMap.popularity;
 
   try {
-    // `discover` ignore le titre : avec un texte, on cherche puis on filtre genre / note côté serveur
+    // `discover` ignore le titre : avec un texte, on cherche puis on filtre / trie côté serveur
     if (params.query) {
-      const data = await tmdbGet("/search/movie", {
-        language: params.language,
+      const data = await tmdbGet(`/search/${type}`, {
+        language,
         page,
         query: params.query,
-        ...(params.year ? { year: params.year } : {}),
+        ...(params.year ? { [type === "tv" ? "first_air_date_year" : "year"]: params.year } : {}),
       });
       const genreIds = params.with_genres ? params.with_genres.split(",").map(Number) : [];
       const minVote = params["vote_average.gte"] ?? 0;
-      const results = (data.results || []).filter(
-        (m) =>
-          (m.vote_average || 0) >= minVote &&
-          genreIds.every((g) => (m.genre_ids || []).includes(g))
-      );
+      let results = (data.results || [])
+        .map((m) => ({ ...m, media_type: type }))
+        .filter(
+          (m) =>
+            (m.vote_average || 0) >= minVote &&
+            genreIds.every((g) => (m.genre_ids || []).includes(g)) &&
+            (!params.with_original_language || m.original_language === params.with_original_language)
+        );
+      if (sort === "rating") results = results.sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
+      else if (sort === "date") {
+        const d = (m) => m.release_date || m.first_air_date || "";
+        results = results.sort((a, b) => d(b).localeCompare(d(a)));
+      }
       return res.json({ ...data, results });
     }
-    res.json(await tmdbGet("/discover/movie", params));
+
+    const discoverParams = { ...params, sort_by: sortBy, "vote_count.gte": sortBy.startsWith("vote_average") ? 200 : undefined };
+    if (params.year) {
+      delete discoverParams.year;
+      discoverParams[type === "tv" ? "first_air_date_year" : "primary_release_year"] = params.year;
+    }
+    const data = await tmdbGet(`/discover/${type}`, discoverParams);
+    res.json({ ...data, results: (data.results || []).map((r) => ({ ...r, media_type: type })) });
   } catch (error) {
     tmdbError(res, "Erreur recherche avancée", error);
   }
@@ -733,14 +813,12 @@ app.get("/tmdb/advanced-search", async (req, res) => {
 
 // ---------- Découverte (swipe) & « Où regarder » ----------
 
-const REGION_REGEX = /^[A-Z]{2}$/;
-const LANG_REGEX = /^[a-z]{2}-[A-Z]{2}$/;
 const SORTS = ["popularity.desc", "vote_average.desc", "primary_release_date.desc"];
 
 app.get("/tmdb/discover", async (req, res) => {
   const type = req.query.type === "tv" ? "tv" : "movie";
   const page = Math.min(parseId(req.query.page) || 1, 500);
-  const language = LANG_REGEX.test(req.query.lang) ? req.query.lang : "fr-FR";
+  const language = langOf(req.query.lang);
   const params = {
     language,
     page,
@@ -1005,6 +1083,74 @@ app.get("/episodes/:seriesId", actionRateLimit, authMiddleware, async (req, res)
   }
 });
 
+// Marque / démarque plusieurs épisodes d'un coup (cascade « marquer les épisodes précédents »)
+const MAX_BULK = 2000;
+app.put("/episodes/:seriesId/bulk", actionRateLimit, authMiddleware, async (req, res) => {
+  const seriesId = parseId(req.params.seriesId);
+  const { watched, episodes } = req.body || {};
+  if (!seriesId) return res.status(400).json({ error: "Identifiant de série invalide" });
+  if (typeof watched !== "boolean" || !Array.isArray(episodes) || episodes.length === 0 || episodes.length > MAX_BULK) {
+    return res.status(400).json({ error: "watched (booléen) et episodes (1 à 2000 éléments) sont requis" });
+  }
+
+  const bySeason = new Map();
+  for (const item of episodes) {
+    const seasonNumber = parseNumber(item?.seasonNumber, 500);
+    const episodeNumber = parseId(item?.episodeNumber);
+    if (seasonNumber === null || !episodeNumber) {
+      return res.status(400).json({ error: "Saison ou épisode invalide" });
+    }
+    if (!bySeason.has(seasonNumber)) bySeason.set(seasonNumber, new Set());
+    bySeason.get(seasonNumber).add(episodeNumber);
+  }
+
+  try {
+    if (!watched) {
+      await prisma.episodeWatch.deleteMany({
+        where: {
+          userId: req.userId,
+          tmdbSeriesId: seriesId,
+          OR: [...bySeason].map(([seasonNumber, numbers]) => ({ seasonNumber, episodeNumber: { in: [...numbers] } })),
+        },
+      });
+    } else {
+      const data = [];
+      for (const [seasonNumber, numbers] of bySeason) {
+        const season = await getSeason(seriesId, seasonNumber).catch((error) => {
+          throw Object.assign(error, { isTmdb: true });
+        });
+        for (const e of season.episodes) {
+          if (numbers.has(e.episode_number) && isAired(e)) {
+            data.push({
+              userId: req.userId,
+              tmdbSeriesId: seriesId,
+              seasonNumber,
+              episodeNumber: e.episode_number,
+              tmdbEpisodeId: e.id,
+              name: e.name ? String(e.name).slice(0, 300) : null,
+              runtime: e.runtime,
+            });
+          }
+        }
+      }
+      await prisma.episodeWatch.createMany({ data, skipDuplicates: true });
+    }
+
+    const all = await prisma.episodeWatch.findMany({
+      where: { userId: req.userId, tmdbSeriesId: seriesId },
+      select: episodeSelect,
+      orderBy: [{ seasonNumber: "asc" }, { episodeNumber: "asc" }],
+    });
+    res.json({ watched: all });
+  } catch (error) {
+    if (error?.isTmdb) {
+      if (error?.response?.status === 404) return res.status(404).json({ error: "Saison introuvable" });
+      return tmdbError(res, "Erreur saison TMDB", error);
+    }
+    serverError(res, "Erreur mise à jour en lot", error);
+  }
+});
+
 // Marque une saison entière comme vue / non vue (déclaré avant la route épisode)
 app.put("/episodes/:seriesId/season/:seasonNumber", actionRateLimit, authMiddleware, async (req, res) => {
   const seriesId = parseId(req.params.seriesId);
@@ -1026,7 +1172,7 @@ app.put("/episodes/:seriesId/season/:seasonNumber", actionRateLimit, authMiddlew
         throw Object.assign(error, { isTmdb: true });
       });
       await prisma.episodeWatch.createMany({
-        data: season.episodes.map((e) => ({
+        data: season.episodes.filter((e) => isAired(e)).map((e) => ({
           userId: req.userId,
           tmdbSeriesId: seriesId,
           seasonNumber,
@@ -1092,6 +1238,7 @@ app.put("/episodes/:seriesId/:seasonNumber/:episodeNumber", actionRateLimit, aut
       return tmdbError(res, "Erreur épisode TMDB", error);
     }
     if (!episode) return res.status(404).json({ error: "Épisode introuvable" });
+    if (!isAired(episode)) return res.status(400).json({ error: "Cet épisode n'est pas encore diffusé" });
 
     const entry = await prisma.episodeWatch.upsert({
       where: key,

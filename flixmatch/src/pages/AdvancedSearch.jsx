@@ -1,11 +1,15 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { API_URL } from "../api";
+import { useSettings } from "../settings";
 import MediaCard from "../components/MediaCard";
-import { Button, EmptyState, ErrorState, GridSkeleton, MediaGrid, PageHeader } from "../components/ui";
+import { EmptyState, ErrorState, GridSkeleton, InfiniteSentinel, MediaGrid, PageHeader, Spinner, Tabs } from "../components/ui";
 import { mediaTitle, mediaYear, posterUrl } from "../utils";
 
-const EMPTY_FILTERS = { query: "", genre: "", year: "", minRating: "", maxDuration: "" };
+const EMPTY_FILTERS = { query: "", genre: "", year: "", minRating: "", maxDuration: "", originalLanguage: "", sort: "popularity", onlyMine: false };
+
+const ORIGINAL_LANGS = { fr: "Français", en: "Anglais", es: "Espagnol", de: "Allemand", it: "Italien", pt: "Portugais", ja: "Japonais", ko: "Coréen", zh: "Chinois", hi: "Hindi", tr: "Turc", ru: "Russe" };
+const SORTS = { popularity: "Popularité", rating: "Note", date: "Date de sortie" };
 
 const Field = ({ label, children }) => (
   <label className="block text-sm font-medium text-zinc-300">
@@ -15,13 +19,17 @@ const Field = ({ label, children }) => (
 );
 
 function AdvancedSearch() {
+  const settings = useSettings();
+  const [type, setType] = useState("movie");
   const [genres, setGenres] = useState([]);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [debounced, setDebounced] = useState(EMPTY_FILTERS);
   const [results, setResults] = useState([]);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const busy = useRef(false);
 
   useEffect(() => {
     axios
@@ -32,42 +40,67 @@ function AdvancedSearch() {
 
   // Évite une requête à chaque frappe
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebounced(filters);
-      setPage(1);
-    }, 400);
+    const timer = setTimeout(() => setDebounced(filters), 400);
     return () => clearTimeout(timer);
   }, [filters]);
 
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setError(false);
-    axios
-      .get(`${API_URL}/tmdb/advanced-search`, { params: { ...debounced, page } })
-      .then((res) => active && setResults(res.data.results || []))
-      .catch((err) => {
+  const fetchPage = useCallback(
+    async (nextPage) => {
+      if (busy.current) return;
+      busy.current = true;
+      setLoading(true);
+      setError(false);
+      const { onlyMine, ...rest } = debounced;
+      try {
+        const res = await axios.get(`${API_URL}/tmdb/advanced-search`, {
+          params: {
+            ...rest,
+            type,
+            page: nextPage,
+            lang: settings.metaLang,
+            region: settings.region,
+            providers: onlyMine && settings.providers.length ? settings.providers.join("|") : undefined,
+          },
+        });
+        setTotalPages(res.data.total_pages || 1);
+        setPage(nextPage);
+        setResults((prev) => {
+          const base = nextPage === 1 ? [] : prev;
+          const seen = new Set(base.map((r) => r.id));
+          return [...base, ...(res.data.results || []).filter((r) => !seen.has(r.id))];
+        });
+      } catch (err) {
         console.error("Erreur recherche avancée :", err);
-        if (active) {
-          setResults([]);
-          setError(true);
-        }
-      })
-      .finally(() => active && setLoading(false));
-    return () => {
-      active = false;
-    };
-  }, [debounced, page]);
+        if (nextPage === 1) setResults([]);
+        setError(true);
+      } finally {
+        busy.current = false;
+        setLoading(false);
+      }
+    },
+    [debounced, type, settings.metaLang, settings.region, settings.providers]
+  );
 
-  const handleFilterChange = (e) => setFilters((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  useEffect(() => {
+    busy.current = false;
+    setPage(0);
+    fetchPage(1);
+  }, [fetchPage]);
+
+  const handleFilterChange = (e) =>
+    setFilters((prev) => ({ ...prev, [e.target.name]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
+
+  const hasMore = page > 0 && page < totalPages && !error;
 
   return (
     <div className="page">
-      <PageHeader title="Recherche avancée" subtitle="Filtre les films par genre, année, note et durée." />
+      <PageHeader title="Recherche avancée" subtitle="Filtre les films et séries par genre, année, note, plateforme, langue et durée." />
 
-      <form className="surface mb-8 grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 lg:grid-cols-5" onSubmit={(e) => e.preventDefault()}>
+      <Tabs tabs={[["movie", "Films"], ["tv", "Séries"]]} value={type} onChange={setType} label="Type de titre" />
+
+      <form className="surface mb-8 grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={(e) => e.preventDefault()}>
         <Field label="Titre">
-          <input type="text" name="query" placeholder="Titre d'un film" className="field" value={filters.query} onChange={handleFilterChange} />
+          <input type="search" name="query" placeholder="Titre" className="field" value={filters.query} onChange={handleFilterChange} />
         </Field>
         <Field label="Genre">
           <select name="genre" className="field" value={filters.genre} onChange={handleFilterChange}>
@@ -76,42 +109,55 @@ function AdvancedSearch() {
           </select>
         </Field>
         <Field label="Année">
-          <input type="number" name="year" min="1900" max="2100" placeholder="ex. 2020" className="field" value={filters.year} onChange={handleFilterChange} />
+          <input type="number" inputMode="numeric" name="year" min="1900" max="2100" placeholder="ex. 2020" className="field" value={filters.year} onChange={handleFilterChange} />
         </Field>
         <Field label="Note minimale (0-10)">
-          <input type="number" name="minRating" min="0" max="10" step="0.5" placeholder="ex. 7" className="field" value={filters.minRating} onChange={handleFilterChange} />
+          <input type="number" inputMode="decimal" name="minRating" min="0" max="10" step="0.5" placeholder="ex. 7" className="field" value={filters.minRating} onChange={handleFilterChange} />
+        </Field>
+        <Field label="Langue originale">
+          <select name="originalLanguage" className="field" value={filters.originalLanguage} onChange={handleFilterChange}>
+            <option value="">Toutes</option>
+            {Object.entries(ORIGINAL_LANGS).map(([code, label]) => <option key={code} value={code}>{label}</option>)}
+          </select>
         </Field>
         <Field label="Durée max (min)">
-          <input type="number" name="maxDuration" min="0" max="1000" placeholder="ex. 120" className="field" value={filters.maxDuration} onChange={handleFilterChange} />
+          <input type="number" inputMode="numeric" name="maxDuration" min="0" max="1000" placeholder="ex. 120" className="field" value={filters.maxDuration} onChange={handleFilterChange} />
         </Field>
+        <Field label="Trier par">
+          <select name="sort" className="field" value={filters.sort} onChange={handleFilterChange}>
+            {Object.entries(SORTS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </Field>
+        <label className="flex items-center gap-3 self-end pb-2 text-sm text-zinc-300">
+          <input type="checkbox" name="onlyMine" className="h-5 w-5 accent-brand-500" checked={filters.onlyMine} disabled={settings.providers.length === 0} onChange={handleFilterChange} />
+          Sur mes plateformes
+        </label>
       </form>
 
-      {loading ? (
+      {loading && results.length === 0 ? (
         <GridSkeleton />
-      ) : error ? (
-        <ErrorState message="Les filtres sont invalides ou TMDB est indisponible." onRetry={() => setFilters({ ...filters })} />
+      ) : error && results.length === 0 ? (
+        <ErrorState message="Les filtres sont invalides ou TMDB est indisponible." onRetry={() => fetchPage(1)} />
       ) : results.length === 0 ? (
         <EmptyState icon="🔎" title="Aucun résultat" text="Assouplis tes filtres pour élargir la recherche." />
       ) : (
-        <MediaGrid>
-          {results.map((item) => (
-            <MediaCard
-              key={item.id}
-              to={`/movie/${item.id}`}
-              title={mediaTitle(item)}
-              poster={posterUrl(item.poster_path)}
-              subtitle={["Film", mediaYear(item)].filter(Boolean).join(" · ")}
-              badge={item.vote_average ? `★ ${item.vote_average.toFixed(1)}` : null}
-            />
-          ))}
-        </MediaGrid>
+        <>
+          <MediaGrid>
+            {results.map((item) => (
+              <MediaCard
+                key={item.id}
+                to={`/${type}/${item.id}`}
+                title={mediaTitle(item)}
+                poster={posterUrl(item.poster_path)}
+                subtitle={[type === "tv" ? "Série" : "Film", mediaYear(item)].filter(Boolean).join(" · ")}
+                ratings={{ tmdb: item.vote_average, tmdbVotes: item.vote_count }}
+              />
+            ))}
+          </MediaGrid>
+          {loading && <div className="mt-6 flex justify-center text-brand-400" role="status" aria-label="Chargement"><Spinner className="h-7 w-7" /></div>}
+          <InfiniteSentinel disabled={!hasMore || loading} onVisible={() => fetchPage(page + 1)} />
+        </>
       )}
-
-      <div className="mt-8 flex items-center justify-center gap-3">
-        <Button onClick={() => setPage((p) => Math.max(p - 1, 1))} disabled={page === 1 || loading}>← Précédent</Button>
-        <span className="text-sm text-zinc-400" aria-live="polite">Page {page}</span>
-        <Button onClick={() => setPage((p) => p + 1)} disabled={loading || results.length === 0}>Suivant →</Button>
-      </div>
     </div>
   );
 }
