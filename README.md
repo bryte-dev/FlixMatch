@@ -121,7 +121,9 @@ See `flixmatch/.env.example` (never commit `.env`):
 
 Done: PWA/mobile, themes + fonts + sticker buttons, Discover swipe, smart episode tracking, multilingual search, rating badges, settings (local).
 
-Not done yet (needs DB migrations and more work): full UI i18n (14 languages + RTL; only the TMDB metadata language is configurable for now), avatars/profile stats, followers / activity feed / per-section privacy, account deletion, server-side settings sync, TV Time ZIP import (adapter architecture, TMDB matching, batch import), splash screens, pull-to-refresh, custom lists as swipe target, persisting the "abandoned" series status and ignored titles in the database.
+Also done: TV Time ZIP import (`/import`, client-side parsing, adapters, TMDB matching, batches), avatars (presets, upload, generated from stats), followers/following, user search, invite links (`/join/:code`), friends activity feed (`/activity`), public profiles (`/u/:id`), per-section privacy (public / friends = mutual follow / private), account deletion (password required), and UI i18n in 14 languages with RTL for Arabic (navigation and language selector translated; other screens remain in French and fall back to it). Requires the migration `20261017120000_social_profile` (applied by `npm start`).
+
+Not done yet: translating every screen, server-side settings sync, splash screens, pull-to-refresh, custom lists as swipe target, favourite-genre stats, persisting the "abandoned" series status and ignored titles in the database. Nothing has been verified visually or against a real DB/TMDB in the sandbox.
 
 ## Legal / attribution
 
