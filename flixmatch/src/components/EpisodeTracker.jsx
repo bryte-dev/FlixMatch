@@ -5,10 +5,23 @@ import { FiCheck, FiChevronDown } from "react-icons/fi";
 import { API_URL } from "../api";
 import { useToast } from "../toastContext";
 import useBusy from "../hooks/useBusy";
-import { Button, ErrorState, Spinner } from "./ui";
+import { BottomSheet, Button, ErrorState, Spinner } from "./ui";
+import {
+  STATUS_LABELS, epKey, firstIncompleteSeason, incompleteSeasonsBefore, isAired, lastWatchedLabel,
+  missingBefore, nextUnwatched, seriesStatus, watchedAfter,
+} from "../lib/episodes";
 import { errorMessage, formatDate, posterUrl } from "../utils";
 
-const key = (season, episode) => `${season}-${episode}`;
+const key = epKey;
+
+const ABANDONED_KEY = "fm-abandoned";
+const readAbandoned = () => {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(ABANDONED_KEY) || "[]"));
+  } catch {
+    return new Set();
+  }
+};
 
 function ProgressBar({ done, total, label }) {
   const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
@@ -40,6 +53,9 @@ export default function EpisodeTracker({ seriesId, user }) {
   const [episodesError, setEpisodesError] = useState({});
   const [open, setOpen] = useState(null);
   const [confirmReset, setConfirmReset] = useState(null);
+  const [sheet, setSheet] = useState(null);
+  const [abandonedSet, setAbandonedSet] = useState(readAbandoned);
+  const abandoned = abandonedSet.has(Number(seriesId));
 
   const loadSeasons = useCallback(async () => {
     setSeasonsError(false);
@@ -101,38 +117,164 @@ export default function EpisodeTracker({ seriesId, user }) {
   }, [watched]);
   const watchedInSeason = (n) => watchedPerSeason[n] || 0;
   const watchedTotal = (seasons || []).reduce((sum, s) => sum + Math.min(watchedInSeason(s.season_number), s.episode_count), 0);
+  const regularSeasons = (seasons || []).filter((s) => s.season_number > 0);
+  const totalRegular = regularSeasons.reduce((sum, s) => sum + s.episode_count, 0);
+  const watchedRegular = regularSeasons.reduce((sum, s) => sum + Math.min(watchedInSeason(s.season_number), s.episode_count), 0);
+  const status = seriesStatus({ watchedRegular, totalRegular, abandoned });
+  const lastLabel = lastWatchedLabel(watched);
+
+  // Charge (si besoin) les épisodes des saisons demandées et renvoie la table complète
+  const ensureEpisodes = async (seasonNumbers) => {
+    const merged = { ...episodesBySeason };
+    await Promise.all(
+      seasonNumbers
+        .filter((n) => !merged[n])
+        .map(async (n) => {
+          const res = await axios.get(`${API_URL}/tmdb/tv/${seriesId}/season/${n}`);
+          merged[n] = res.data.episodes;
+        })
+    );
+    setEpisodesBySeason(merged);
+    return merged;
+  };
+
+  const applyBulk = async (items, value) => {
+    const res = await axios.put(`${API_URL}/episodes/${seriesId}/bulk`, { watched: value, episodes: items });
+    setWatched(new Set(res.data.watched.map((w) => key(w.seasonNumber, w.episodeNumber))));
+  };
+
+  const seasonNumbers = (seasons || []).map((s) => s.season_number);
+  const airedItems = (map, n) => (map[n] || []).filter((ep) => isAired(ep)).map((ep) => ({ seasonNumber: n, episodeNumber: ep.episode_number }));
+
+  const failure = (err, fallback) => toast(errorMessage(err, fallback), "error");
 
   const toggleEpisode = (seasonNumber, episodeNumber) =>
     run(key(seasonNumber, episodeNumber), async () => {
       const next = !watched.has(key(seasonNumber, episodeNumber));
+      const single = [{ seasonNumber, episodeNumber }];
       try {
-        await axios.put(`${API_URL}/episodes/${seriesId}/${seasonNumber}/${episodeNumber}`, { watched: next });
-        setWatched((prev) => {
-          const copy = new Set(prev);
-          if (next) copy.add(key(seasonNumber, episodeNumber));
-          else copy.delete(key(seasonNumber, episodeNumber));
-          return copy;
-        });
+        if (next) {
+          const map = await ensureEpisodes(seasonNumbers.filter((n) => (n === 0) === (seasonNumber === 0) && n <= seasonNumber));
+          const missing = missingBefore(map, watched, seasonNumber, episodeNumber);
+          if (missing.length > 0) {
+            setSheet({
+              title: "Marquer les épisodes précédents ?",
+              text: `${missing.length} épisode${missing.length > 1 ? "s" : ""} diffusé${missing.length > 1 ? "s" : ""} avant S${seasonNumber}·E${episodeNumber} ne ${missing.length > 1 ? "sont" : "est"} pas marqué${missing.length > 1 ? "s" : ""} comme vu${missing.length > 1 ? "s" : ""}.`,
+              options: [
+                { label: `Oui, tout (${missing.length + 1})`, variant: "primary", action: () => applyBulk([...missing, ...single], true) },
+                { label: "Seulement celui-ci", action: () => applyBulk(single, true) },
+              ],
+            });
+            return;
+          }
+          await applyBulk(single, true);
+          return;
+        }
+        const following = watchedAfter(watched, seasonNumber, episodeNumber);
+        if (following.length > 0) {
+          setSheet({
+            title: "Décocher aussi les suivants ?",
+            text: `${following.length} épisode${following.length > 1 ? "s" : ""} suivant${following.length > 1 ? "s" : ""} ${following.length > 1 ? "sont" : "est"} marqué${following.length > 1 ? "s" : ""} comme vu${following.length > 1 ? "s" : ""}.`,
+            options: [
+              { label: `Oui, décocher les suivants (${following.length})`, variant: "danger", action: () => applyBulk([...single, ...following], false) },
+              { label: "Seulement celui-ci", action: () => applyBulk(single, false) },
+            ],
+          });
+          return;
+        }
+        await applyBulk(single, false);
       } catch (err) {
-        toast(errorMessage(err, "Impossible de mettre à jour l'épisode"), "error");
+        failure(err, "Impossible de mettre à jour l'épisode");
       }
     });
 
   const setSeasonWatched = (seasonNumber, value) =>
     run(`season-${seasonNumber}`, async () => {
       try {
-        const res = await axios.put(`${API_URL}/episodes/${seriesId}/season/${seasonNumber}`, { watched: value });
-        setWatched((prev) => {
-          const copy = new Set([...prev].filter((k) => !k.startsWith(`${seasonNumber}-`)));
-          res.data.watched.forEach((w) => copy.add(key(w.seasonNumber, w.episodeNumber)));
-          return copy;
-        });
-        setConfirmReset(null);
-        toast(value ? "Saison marquée comme vue" : "Saison remise à zéro", "success");
+        if (value) {
+          const map = await ensureEpisodes(seasonNumbers.filter((n) => n <= seasonNumber && (n > 0 || seasonNumber === 0)));
+          const previous = incompleteSeasonsBefore(map, watched, seasonNumber);
+          const own = airedItems(map, seasonNumber);
+          if (previous.length > 0) {
+            const prevItems = previous.flatMap((n) => airedItems(map, n).filter((i) => !watched.has(key(i.seasonNumber, i.episodeNumber))));
+            const label = previous.length === 1 ? `la saison ${previous[0]}` : `les saisons ${previous[0]} à ${previous[previous.length - 1]}`;
+            setSheet({
+              title: "Marquer les saisons précédentes ?",
+              text: `Ces saisons ne sont pas entièrement vues : proposer de marquer aussi ${label} ?`,
+              options: [
+                { label: "Oui, tout", variant: "primary", action: () => applyBulk([...prevItems, ...own], true) },
+                { label: "Seulement cette saison", action: () => applyBulk(own, true) },
+              ],
+            });
+            return;
+          }
+          await applyBulk(own, true);
+          toast("Saison marquée comme vue", "success");
+        } else {
+          await axios.put(`${API_URL}/episodes/${seriesId}/season/${seasonNumber}`, { watched: false });
+          setWatched((prev) => new Set([...prev].filter((k) => !k.startsWith(`${seasonNumber}-`))));
+          setConfirmReset(null);
+          toast("Saison remise à zéro", "success");
+        }
       } catch (err) {
-        toast(errorMessage(err, "Impossible de mettre à jour la saison"), "error");
+        failure(err, "Impossible de mettre à jour la saison");
       }
     });
+
+  const markSeries = () =>
+    run("series", async () => {
+      try {
+        const regular = seasonNumbers.filter((n) => n > 0);
+        const map = await ensureEpisodes(regular);
+        const items = regular.flatMap((n) => airedItems(map, n)).filter((i) => !watched.has(key(i.seasonNumber, i.episodeNumber)));
+        if (items.length === 0) return;
+        setSheet({
+          title: "Marquer toute la série ?",
+          text: `${items.length} épisode${items.length > 1 ? "s" : ""} diffusé${items.length > 1 ? "s" : ""} seront marqués comme vus (les épisodes à venir sont ignorés).`,
+          options: [{ label: "Oui, toute la série", variant: "primary", action: () => applyBulk(items, true) }],
+        });
+      } catch (err) {
+        failure(err, "Impossible de charger la série");
+      }
+    });
+
+  const goNext = () =>
+    run("next", async () => {
+      const n = firstIncompleteSeason(seasons, watched);
+      if (n === null) return toast("Tu as tout vu 🎉", "success");
+      try {
+        const map = await ensureEpisodes([n]);
+        const ep = nextUnwatched(map[n], watched, n);
+        setOpen(n);
+        if (!ep) return toast("Plus d'épisode diffusé à voir pour l'instant", "info");
+        toast(`Prochain épisode : S${n}·E${ep.episode_number} — ${ep.name}`, "info");
+        setTimeout(() => document.getElementById(`ep-${n}-${ep.episode_number}`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 100);
+      } catch (err) {
+        failure(err, "Impossible de trouver le prochain épisode");
+      }
+    });
+
+  const toggleAbandoned = () => {
+    const next = new Set(abandonedSet);
+    if (next.has(Number(seriesId))) next.delete(Number(seriesId));
+    else next.add(Number(seriesId));
+    setAbandonedSet(next);
+    try {
+      localStorage.setItem(ABANDONED_KEY, JSON.stringify([...next]));
+    } catch {
+      // stockage indisponible
+    }
+  };
+
+  const runSheetAction = async (action) => {
+    setSheet(null);
+    try {
+      await action();
+      toast("Progression mise à jour", "success");
+    } catch (err) {
+      failure(err, "Impossible de mettre à jour la progression");
+    }
+  };
 
   if (seasonsError) return <ErrorState message="Impossible de charger les saisons depuis TMDB." onRetry={loadSeasons} />;
   if (!seasons) {
@@ -153,13 +295,24 @@ export default function EpisodeTracker({ seriesId, user }) {
     <div className="space-y-4">
       <div className="surface p-5">
         <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-          <p className="font-semibold">Progression de la série</p>
+          <p className="flex flex-wrap items-center gap-2 font-semibold">
+            Progression de la série
+            {user && <span className="chip" data-status={status}>{STATUS_LABELS[status]}</span>}
+            {user && lastLabel && <span className="chip">{lastLabel}</span>}
+          </p>
           <p className="text-sm text-zinc-300" aria-live="polite">
             {user ? `${Math.min(watchedTotal, totalEpisodes)} / ${totalEpisodes} épisodes vus` : `${totalEpisodes} épisodes`}
           </p>
         </div>
         {user ? (
-          <ProgressBar done={watchedTotal} total={totalEpisodes} label="Progression de la série" />
+          <>
+            <ProgressBar done={watchedTotal} total={totalEpisodes} label="Progression de la série" />
+            <div className="mt-3 flex flex-wrap gap-2">
+              {status !== "completed" && <Button size="sm" variant="primary" pending={isBusy("next")} onClick={goNext}>Prochain épisode</Button>}
+              {status !== "completed" && <Button size="sm" pending={isBusy("series")} onClick={markSeries}>Marquer la série comme vue</Button>}
+              {status !== "completed" && <Button size="sm" variant="ghost" aria-pressed={abandoned} onClick={toggleAbandoned}>{abandoned ? "Reprendre la série" : "Abandonner"}</Button>}
+            </div>
+          </>
         ) : (
           <p className="text-sm text-zinc-400">
             <Link to="/login" className="font-semibold text-brand-300 hover:underline">Connecte-toi</Link> pour suivre les épisodes que tu as vus.
@@ -226,9 +379,10 @@ export default function EpisodeTracker({ seriesId, user }) {
                   <ul className="divide-y divide-white/5">
                     {episodes.map((ep) => {
                       const isWatched = watched.has(key(n, ep.episode_number));
+                      const aired = isAired(ep);
                       const still = posterUrl(ep.still_path, "w300");
                       return (
-                        <li key={ep.id ?? ep.episode_number} className="flex items-center gap-3 py-3">
+                        <li key={ep.id ?? ep.episode_number} id={`ep-${n}-${ep.episode_number}`} className="flex items-center gap-3 py-3">
                           {still ? (
                             <img src={still} alt="" loading="lazy" className="hidden aspect-video w-32 shrink-0 rounded-lg bg-ink-700 object-cover sm:block" />
                           ) : (
@@ -240,7 +394,7 @@ export default function EpisodeTracker({ seriesId, user }) {
                               {ep.name}
                             </p>
                             <p className="text-xs text-zinc-500">
-                              {[formatDate(ep.air_date), ep.runtime ? `${ep.runtime} min` : ""].filter(Boolean).join(" · ") || "Date inconnue"}
+                              {[formatDate(ep.air_date), ep.runtime ? `${ep.runtime} min` : "", aired ? "" : "Pas encore diffusé"].filter(Boolean).join(" · ") || "Date inconnue"}
                             </p>
                             {ep.overview && <p className="mt-1 line-clamp-2 text-sm text-zinc-400">{ep.overview}</p>}
                           </div>
@@ -249,6 +403,7 @@ export default function EpisodeTracker({ seriesId, user }) {
                               size="sm"
                               variant={isWatched ? "primary" : "secondary"}
                               pending={isBusy(key(n, ep.episode_number))}
+                              disabled={!aired && !isWatched}
                               onClick={() => toggleEpisode(n, ep.episode_number)}
                               aria-pressed={isWatched}
                               aria-label={`${isWatched ? "Marquer non vu" : "Marquer comme vu"} : épisode ${ep.episode_number}, ${ep.name}`}
@@ -267,6 +422,15 @@ export default function EpisodeTracker({ seriesId, user }) {
           </section>
         );
       })}
+      <BottomSheet open={Boolean(sheet)} onClose={() => setSheet(null)} title={sheet?.title || ""}>
+        <p className="mb-4 text-sm text-zinc-300">{sheet?.text}</p>
+        <div className="flex flex-col gap-2">
+          {sheet?.options.map((o) => (
+            <Button key={o.label} variant={o.variant || "secondary"} onClick={() => runSheetAction(o.action)}>{o.label}</Button>
+          ))}
+          <Button variant="ghost" onClick={() => setSheet(null)}>Annuler</Button>
+        </div>
+      </BottomSheet>
     </div>
   );
 }

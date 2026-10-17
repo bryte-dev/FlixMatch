@@ -1,7 +1,8 @@
 import { Link } from "react-router-dom";
+import RatingBadges from "./RatingBadges";
 
 // Carte affiche : ratio 2/3, titre tronqué, overlay dégradé, lift au survol. `children` = zone d'actions.
-export default function MediaCard({ to, title, poster, subtitle, badge, children }) {
+export default function MediaCard({ to, title, poster, subtitle, badge, ratings, children }) {
   return (
     <article className="group surface flex flex-col overflow-hidden transition duration-300 hover:-translate-y-1 hover:border-brand-400/40 hover:shadow-brand-600/20 focus-within:-translate-y-1">
       <Link to={to} className="relative block aspect-[2/3] overflow-hidden bg-ink-700" aria-label={title}>
@@ -17,7 +18,8 @@ export default function MediaCard({ to, title, poster, subtitle, badge, children
           }}
         />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/70 to-transparent" />
-        {badge && (
+        {ratings && <RatingBadges {...ratings} className="absolute left-2 top-2" />}
+        {badge && !ratings && (
           <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur">
             {badge}
           </span>

@@ -1,3 +1,4 @@
+import RatingBadges from "../components/RatingBadges";
 import { useCallback, useContext, useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import axios from "axios";
@@ -221,8 +222,15 @@ function MovieDetail() {
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <span className="chip">{type === "tv" ? "Série" : "Film"}</span>
-              {movie.vote_average > 0 && <span className="chip !text-amber-300">★ {movie.vote_average.toFixed(1)} TMDB</span>}
-              {average != null && <span className="chip !border-brand-400/30 !text-brand-300">★ {average.toFixed(1)} FlixMatch</span>}
+              <RatingBadges
+                size="lg"
+                imdb={movie.imdbRating}
+                imdbVotes={movie.imdbVotes}
+                tmdb={movie.vote_average}
+                tmdbVotes={movie.vote_count}
+                flixmatch={average != null ? average * 2 : null}
+                flixmatchVotes={movie.flixmatchVotes}
+              />
               {runtime ? <span className="chip">{Math.floor(runtime / 60) ? `${Math.floor(runtime / 60)}h ` : ""}{runtime % 60}min</span> : null}
               {type === "tv" && movie.number_of_seasons ? <span className="chip">{movie.number_of_seasons} saison{movie.number_of_seasons > 1 ? "s" : ""}</span> : null}
               {movie.genres?.map((g) => <span key={g.id} className="chip">{g.name}</span>)}

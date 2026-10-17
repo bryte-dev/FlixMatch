@@ -1,20 +1,24 @@
 import { Link, NavLink, useNavigate } from "react-router-dom";
-import { useContext, useState } from "react";
+import { useContext, useRef, useState } from "react";
+import { saveSettings } from "../settings";
+import { unlockThemes } from "../theme";
 import { AuthContext } from "../AuthContext";
-import { FiHome, FiBookmark, FiStar, FiEye, FiTrash2, FiSliders, FiUser, FiMenu, FiX, FiLogOut } from "react-icons/fi";
+import { FiHome, FiBookmark, FiStar, FiEye, FiTrash2, FiSliders, FiLayers, FiSettings, FiUser, FiMenu, FiX, FiLogOut } from "react-icons/fi";
+import { useT } from "../i18n";
 import SearchBar from "./SearchBar";
 import { useToast } from "../toastContext";
 
 const PUBLIC_LINKS = [
-  { to: "/", label: "Accueil", icon: FiHome, end: true },
-  { to: "/advanced-search", label: "Recherche avancée", short: "Découvrir", icon: FiSliders },
+  { to: "/", key: "home", label: "Accueil", icon: FiHome, end: true },
+  { to: "/discover", key: "discover", label: "Découverte", icon: FiLayers },
+  { to: "/advanced-search", key: "advancedSearch", label: "Recherche avancée", short: "Recherche", icon: FiSliders },
 ];
 
 const PRIVATE_LINKS = [
-  { to: "/watchlist", label: "À voir", icon: FiBookmark },
-  { to: "/favorites", label: "Favoris", icon: FiStar },
-  { to: "/seen", label: "Vus", icon: FiEye },
-  { to: "/junk", label: "Corbeille", icon: FiTrash2 },
+  { to: "/watchlist", key: "watchlist", label: "À voir", icon: FiBookmark },
+  { to: "/favorites", key: "favorites", label: "Favoris", icon: FiStar },
+  { to: "/seen", key: "seen", label: "Vus", icon: FiEye },
+  { to: "/junk", key: "trash", label: "Corbeille", icon: FiTrash2 },
 ];
 
 const linkClass = ({ isActive }) =>
@@ -24,10 +28,25 @@ const linkClass = ({ isActive }) =>
 
 function Navbar() {
   const { user, logout } = useContext(AuthContext);
+  const t = useT();
   const [menuOpen, setMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const navigate = useNavigate();
   const toast = useToast();
+  const taps = useRef({ count: 0, last: 0 });
+
+  // Easter egg mobile : 7 appuis rapides sur le logo débloquent les thèmes bonus
+  const onLogoTap = () => {
+    const now = Date.now();
+    taps.current.count = now - taps.current.last < 600 ? taps.current.count + 1 : 1;
+    taps.current.last = now;
+    if (taps.current.count >= 7) {
+      taps.current.count = 0;
+      unlockThemes();
+      saveSettings({ theme: "neon" });
+      toast("🎉 Thèmes secrets débloqués ! Retrouve-les dans les paramètres.", "success");
+    }
+  };
 
   const links = user ? [...PUBLIC_LINKS.slice(0, 1), ...PRIVATE_LINKS, ...PUBLIC_LINKS.slice(1)] : PUBLIC_LINKS;
   const closeMenu = () => setMenuOpen(false);
@@ -48,7 +67,7 @@ function Navbar() {
   };
 
   return (
-    <header className="sticky top-0 z-50 border-b border-white/10 bg-ink-950/80 backdrop-blur-lg">
+    <header className="safe-top sticky top-0 z-50 border-b border-white/10 bg-ink-950/80 backdrop-blur-lg">
       <a
         href="#contenu"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-2 focus:z-[60] focus:rounded-lg focus:bg-brand-600 focus:px-3 focus:py-2"
@@ -56,17 +75,17 @@ function Navbar() {
         Aller au contenu
       </a>
       <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 sm:px-6 lg:px-8">
-        <Link to="/" className="flex shrink-0 items-center gap-2" aria-label="FlixMatch, accueil">
+        <Link to="/" onClick={onLogoTap} className="no-select flex shrink-0 items-center gap-2" aria-label="FlixMatch, accueil">
           <img src="/FlixMatchLogo.png" alt="" className="h-9 w-9 lg:hidden" />
           <img src="/FlixMatch.png" alt="FlixMatch" className="hidden h-6 w-auto lg:block" />
         </Link>
 
         <nav className="ml-2 hidden items-center gap-1 md:flex" aria-label="Navigation principale">
-          {links.map(({ to, label, icon: Icon, end }) => (
-            <NavLink key={to} to={to} end={end} className={linkClass} title={label}>
+          {links.map(({ to, key: k, label, icon: Icon, end }) => (
+            <NavLink key={to} to={to} end={end} className={linkClass} title={k ? t(k) : label}>
               <Icon aria-hidden="true" />
-              <span className="hidden xl:inline">{label}</span>
-              <span className="sr-only xl:hidden">{label}</span>
+              <span className="hidden xl:inline">{k ? t(k) : label}</span>
+              <span className="sr-only xl:hidden">{k ? t(k) : label}</span>
             </NavLink>
           ))}
         </nav>
@@ -78,6 +97,9 @@ function Navbar() {
         <div className="ml-auto flex items-center gap-2 md:ml-0">
           {user ? (
             <>
+              <NavLink to="/settings" className={linkClass} title="Paramètres" aria-label="Paramètres">
+                <FiSettings aria-hidden="true" />
+              </NavLink>
               <NavLink to="/account" className={linkClass} title="Mon compte" aria-label="Mon compte">
                 <FiUser aria-hidden="true" />
                 <span className="hidden max-w-28 truncate lg:inline">{user.username || "Compte"}</span>
@@ -95,6 +117,9 @@ function Navbar() {
             </>
           ) : (
             <div className="hidden items-center gap-2 sm:flex">
+              <NavLink to="/settings" className={linkClass} title="Paramètres" aria-label="Paramètres">
+                <FiSettings aria-hidden="true" />
+              </NavLink>
               <Link to="/login" className="btn btn-ghost btn-sm">Connexion</Link>
               <Link to="/register" className="btn btn-primary btn-sm">S&apos;inscrire</Link>
             </div>
@@ -116,9 +141,9 @@ function Navbar() {
         <div id="menu-mobile" className="border-t border-white/10 bg-ink-900/95 px-4 pb-4 pt-3 md:hidden">
           <SearchBar onNavigate={closeMenu} className="mb-3" />
           <nav className="flex flex-col gap-1" aria-label="Navigation mobile">
-            {links.map(({ to, label, icon: Icon, end }) => (
+            {links.map(({ to, key: k, label, icon: Icon, end }) => (
               <NavLink key={to} to={to} end={end} className={linkClass} onClick={closeMenu}>
-                <Icon aria-hidden="true" /> {label}
+                <Icon aria-hidden="true" /> {k ? t(k) : label}
               </NavLink>
             ))}
             {user ? (

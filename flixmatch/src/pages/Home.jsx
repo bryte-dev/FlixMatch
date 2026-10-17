@@ -110,7 +110,7 @@ function Home() {
                   title={mediaTitle(item)}
                   poster={posterUrl(item.poster_path)}
                   subtitle={[item.media_type === "tv" ? "Série" : "Film", mediaYear(item)].filter(Boolean).join(" · ")}
-                  badge={item.vote_average ? `★ ${item.vote_average.toFixed(1)}` : null}
+                  ratings={{ tmdb: item.vote_average, tmdbVotes: item.vote_count }}
                 >
                   {user && (
                     <Button
