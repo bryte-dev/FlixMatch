@@ -13,6 +13,7 @@ import Register from "./pages/Register";
 import Account from "./pages/Account";
 import Discover from "./pages/Discover";
 import Settings from "./pages/Settings";
+import Import from "./pages/Import";
 import Navbar from "./components/Navbar";
 import TabBar from "./components/TabBar";
 import { useKonami, useTheme } from "./theme";
@@ -61,6 +62,7 @@ const Shell = () => {
           <Route path="/" element={<Home />} />
           <Route path="/discover" element={<Discover />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/import" element={<PrivateRoute><Import /></PrivateRoute>} />
           <Route path="/search" element={<SearchResults />} />
           <Route path="/search/:query" element={<SearchResults />} />
           <Route path="/watchlist" element={<PrivateRoute><Watchlist /></PrivateRoute>} />

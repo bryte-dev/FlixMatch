@@ -1,6 +1,7 @@
 import { useContext, useEffect, useState } from "react";
 import axios from "axios";
 import { API_URL } from "../api";
+import { Link } from "react-router-dom";
 import { AuthContext } from "../AuthContext";
 import { useToast } from "../toastContext";
 import { SWIPE_ACTIONS, saveSettings, useSettings } from "../settings";
@@ -143,6 +144,7 @@ export default function Settings() {
       {user && (
         <Section title="Mes données">
           <Button onClick={exportData} pending={exporting} pendingLabel="Export…">Exporter mes données (JSON)</Button>
+          <Link to="/import" className="btn btn-secondary">Importer depuis TV Time</Link>
         </Section>
       )}
     </div>

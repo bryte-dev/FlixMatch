@@ -675,6 +675,19 @@ app.get("/tmdb/search", async (req, res) => {
   }
 });
 
+// Correspondance par identifiant externe (TVDB / IMDb) : utilisé par les imports
+app.get("/tmdb/find/:source/:id", actionRateLimit, async (req, res) => {
+  const source = { tvdb: "tvdb_id", imdb: "imdb_id" }[req.params.source];
+  const id = String(req.params.id);
+  if (!source || !/^(tt)?\d{1,10}$/.test(id)) return res.status(400).json({ error: "Identifiant invalide" });
+  try {
+    const data = await tmdbGet(`/find/${id}`, { external_source: source, language: "fr-FR" });
+    res.json({ movies: data.movie_results || [], tv: data.tv_results || [] });
+  } catch (error) {
+    tmdbError(res, "Erreur correspondance TMDB", error);
+  }
+});
+
 // Saisons d'une série (liste légère, sans les épisodes)
 app.get("/tmdb/tv/:tmdbId/seasons", async (req, res) => {
   const tmdbId = parseId(req.params.tmdbId);
