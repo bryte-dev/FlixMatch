@@ -44,6 +44,7 @@ model Movie {
   title       String
   media_type  String
   poster_path String
+  genreIds    String     @default("")  // ids de genres TMDB séparés par des virgules, "-" = aucun, "" = pas encore chargé
   watchlist   Watchlist[]  // 🔥 Changement en `Watchlist[]` pour autoriser plusieurs entrées
   reviews     Review[]  // 🔥 Un film peut recevoir plusieurs reviews
 }
@@ -55,6 +56,7 @@ model Watchlist {
   isFavorite Boolean @default(false)
   status     String  @default("WATCHLIST")
   rating     Int?    
+  abandoned  Boolean @default(false)
   createdAt  DateTime @default(now())
 
   movie Movie @relation(fields: [movieId], references: [id])

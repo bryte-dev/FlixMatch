@@ -11,22 +11,6 @@ import SwipeCard from "../components/SwipeCard";
 import { BottomSheet, Button, EmptyState, ErrorState, Spinner } from "../components/ui";
 import { errorMessage, mediaTitle, mediaYear, posterUrl } from "../utils";
 
-const IGNORED_KEY = "fm-ignored";
-const readIgnored = () => {
-  try {
-    return new Set(JSON.parse(localStorage.getItem(IGNORED_KEY) || "[]"));
-  } catch {
-    return new Set();
-  }
-};
-const writeIgnored = (set) => {
-  try {
-    localStorage.setItem(IGNORED_KEY, JSON.stringify([...set].slice(-2000)));
-  } catch {
-    // ignoré : stockage indisponible
-  }
-};
-
 const keyOf = (item) => `${item.media_type}-${item.id}`;
 
 function WhereToWatch({ item, region, myProviders }) {
@@ -83,7 +67,6 @@ export default function Discover() {
   const [error, setError] = useState(false);
   const [exhausted, setExhausted] = useState(false);
   const [libraryIds, setLibraryIds] = useState(new Set());
-  const [ignored, setIgnored] = useState(readIgnored);
   const [history, setHistory] = useState([]);
   const [sheet, setSheet] = useState(false);
   const loadingRef = useRef(false);
@@ -97,8 +80,8 @@ export default function Discover() {
       setLibraryIds(new Set());
       return;
     }
-    Promise.all([axios.get(`${API_URL}/watchlist`), axios.get(`${API_URL}/junk`)])
-      .then(([w, j]) => setLibraryIds(new Set([...w.data, ...j.data].map((e) => e.movie.tmdb_id))))
+    Promise.all([axios.get(`${API_URL}/watchlist`), axios.get(`${API_URL}/junk`), axios.get(`${API_URL}/ignored`)])
+      .then(([w, j, i]) => setLibraryIds(new Set([...w.data, ...j.data].map((e) => e.movie.tmdb_id).concat(i.data.map((e) => e.tmdb_id)))))
       .catch(() => {});
   }, [user]);
 
@@ -149,8 +132,8 @@ export default function Discover() {
   }, [loadMore]);
 
   const deck = useMemo(
-    () => queue.filter((i) => !libraryIds.has(i.id) && !ignored.has(keyOf(i))),
-    [queue, libraryIds, ignored]
+    () => queue.filter((i) => !libraryIds.has(i.id)),
+    [queue, libraryIds]
   );
 
   useEffect(() => {
@@ -161,6 +144,10 @@ export default function Discover() {
 
   const addToLibrary = async (item, direction) => {
     let movieId;
+    if (direction === "left" && settings.swipeLeft !== "junk") {
+      const res = await axios.post(`${API_URL}/ignored`, { tmdb_id: item.id, title: mediaTitle(item), media_type: item.media_type, poster_path: item.poster_path || "" });
+      return res.data.created ? res.data.movieId : null;
+    }
     try {
       const res = await axios.post(`${API_URL}/watchlist`, {
         tmdb_id: item.id,
@@ -174,7 +161,8 @@ export default function Discover() {
       movieId = err.response?.data?.movieId;
       if (!movieId) throw err;
     }
-    if (direction === "up") await axios.put(`${API_URL}/watchlist/${movieId}/seen`);
+    if (direction === "left") await axios.put(`${API_URL}/watchlist/${movieId}/junk`);
+    else if (direction === "up") await axios.put(`${API_URL}/watchlist/${movieId}/seen`);
     else if (settings.swipeAction === "favorites") await axios.put(`${API_URL}/watchlist/${movieId}/favorite`, { isFavorite: true });
     return movieId;
   };
@@ -182,15 +170,13 @@ export default function Discover() {
   const handleSwipe = async (direction) => {
     const item = top;
     if (!item) return;
-    if (direction === "left") {
-      const next = new Set(ignored).add(keyOf(item));
-      setIgnored(next);
-      writeIgnored(next);
-      setHistory((h) => [...h, { item, direction }]);
-      return;
-    }
     if (!user) {
-      toast("Connecte-toi pour enregistrer tes choix.", "info");
+      if (direction === "left") {
+        setLibraryIds((prev) => new Set(prev).add(item.id));
+        setHistory((h) => [...h, { item, direction }]);
+        return;
+      }
+      toast(t("Connecte-toi pour enregistrer tes choix."), "info");
       navigate("/login");
       return;
     }
@@ -198,7 +184,7 @@ export default function Discover() {
     try {
       const movieId = await addToLibrary(item, direction);
       setHistory((h) => [...h, { item, direction, movieId }]);
-      const label = direction === "up" ? "marqué comme vu" : settings.swipeAction === "favorites" ? "ajouté aux favoris" : "ajouté à ta watchlist";
+      const label = direction === "left" ? (settings.swipeLeft === "junk" ? "mis à la corbeille" : "ignoré") : direction === "up" ? "marqué comme vu" : settings.swipeAction === "favorites" ? "ajouté aux favoris" : "ajouté à ta watchlist";
       toast(`« ${mediaTitle(item)} » ${label}`, "success");
     } catch (err) {
       setLibraryIds((prev) => {
@@ -214,19 +200,12 @@ export default function Discover() {
     const last = history[history.length - 1];
     if (!last) return;
     try {
-      if (last.direction === "left") {
-        const next = new Set(ignored);
-        next.delete(keyOf(last.item));
-        setIgnored(next);
-        writeIgnored(next);
-      } else {
-        await axios.delete(`${API_URL}/watchlist/${last.movieId}`);
-        setLibraryIds((prev) => {
-          const copy = new Set(prev);
-          copy.delete(last.item.id);
-          return copy;
-        });
-      }
+      if (last.movieId) await axios.delete(`${API_URL}/watchlist/${last.movieId}`);
+      setLibraryIds((prev) => {
+        const copy = new Set(prev);
+        copy.delete(last.item.id);
+        return copy;
+      });
       setHistory((h) => h.slice(0, -1));
     } catch (err) {
       toast(errorMessage(err, "Impossible d'annuler"), "error");

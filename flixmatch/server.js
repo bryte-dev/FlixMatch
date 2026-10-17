@@ -143,12 +143,12 @@ const tmdbGet = async (route, params = {}) => {
 // Petit cache mémoire pour éviter de marteler TMDB (saisons d'une série)
 const seasonCache = new Map();
 const SEASON_CACHE_TTL = 10 * 60 * 1000;
-const getSeason = async (seriesId, seasonNumber) => {
-  const key = `${seriesId}:${seasonNumber}`;
+const getSeason = async (seriesId, seasonNumber, language = "fr-FR") => {
+  const key = `${seriesId}:${seasonNumber}:${language}`;
   const cached = seasonCache.get(key);
   if (cached && Date.now() - cached.at < SEASON_CACHE_TTL) return cached.data;
 
-  const raw = await tmdbGet(`/tv/${seriesId}/season/${seasonNumber}`, { language: "fr-FR" });
+  const raw = await tmdbGet(`/tv/${seriesId}/season/${seasonNumber}`, { language });
   const data = {
     id: raw.id,
     season_number: raw.season_number,
@@ -203,6 +203,37 @@ const createRateLimit = (windowMs, max, message) => {
 const authRateLimit = createRateLimit(15 * 60 * 1000, 30, "Trop de tentatives, réessaie plus tard");
 // Limite générale pour les actions d'écriture (épisodes, suppression d'avis)
 const actionRateLimit = createRateLimit(60 * 1000, 120, "Trop de requêtes, ralentis un peu");
+
+
+// ---------- Sécurité : en-têtes, limitation globale, protection CSRF ----------
+
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  if (isProduction) res.setHeader("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
+  next();
+});
+
+// Les requêtes qui modifient des données doivent venir de notre propre origine (ou de CORS_ORIGIN)
+const allowedOrigins = new Set((process.env.CORS_ORIGIN || "").split(",").map((o) => o.trim()).filter(Boolean));
+app.use((req, res, next) => {
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
+  const origin = req.headers.origin;
+  if (!origin) return next(); // appels non navigateur (curl, tests) : pas de cookie ambiant à exploiter
+  let host = "";
+  try {
+    host = new URL(origin).host;
+  } catch {
+    return res.status(403).json({ error: "Origine refusée" });
+  }
+  if (host === req.headers.host || allowedOrigins.has(origin)) return next();
+  res.status(403).json({ error: "Origine refusée" });
+});
+
+// Limite globale par IP sur l'API (en plus des limites dédiées plus strictes)
+app.use(createRateLimit(60 * 1000, 600, "Trop de requêtes, ralentis un peu"));
 
 // ---------- Auth ----------
 
@@ -471,7 +502,7 @@ app.get("/feed", actionRateLimit, authMiddleware, async (req, res) => {
     const byId = new Map(visible.map((o) => [o.id, { id: o.id, username: o.username, avatar: o.avatar }]));
 
     const [library, reviews, episodes] = await Promise.all([
-      prisma.watchlist.findMany({ where: { userId: { in: visibleIds } }, orderBy: { createdAt: "desc" }, take: 30, include: { movie: true } }),
+      prisma.watchlist.findMany({ where: { userId: { in: visibleIds }, status: { in: ["WATCHLIST", "SEEN"] } }, orderBy: { createdAt: "desc" }, take: 30, include: { movie: true } }),
       prisma.review.findMany({ where: { userId: { in: visibleIds }, parentId: null }, orderBy: { createdAt: "desc" }, take: 30, include: { movie: true } }),
       prisma.episodeWatch.findMany({ where: { userId: { in: visibleIds } }, orderBy: { watchedAt: "desc" }, take: 30 }),
     ]);
@@ -487,6 +518,55 @@ app.get("/feed", actionRateLimit, authMiddleware, async (req, res) => {
     serverError(res, "Erreur fil d'activité", error);
   }
 });
+
+// Genres favoris : ids de genres TMDB mémorisés en base (remplis à la demande, par petits lots)
+const genreNameCache = new Map();
+const genreNames = async (language) => {
+  const cached = genreNameCache.get(language);
+  if (cached && Date.now() - cached.at < 24 * 60 * 60 * 1000) return cached.map;
+  const [movie, tv] = await Promise.all([
+    tmdbGet("/genre/movie/list", { language }),
+    tmdbGet("/genre/tv/list", { language }),
+  ]);
+  const map = new Map([...(movie.genres || []), ...(tv.genres || [])].map((g) => [g.id, g.name]));
+  genreNameCache.set(language, { at: Date.now(), map });
+  return map;
+};
+
+const topGenres = async (userId, language) => {
+  try {
+    const entries = await prisma.watchlist.findMany({
+      where: { userId, status: { in: ["SEEN", "WATCHLIST"] } },
+      include: { movie: true },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    });
+    const missing = entries.filter((e) => e.movie.genreIds === "").slice(0, 12);
+    await Promise.allSettled(
+      missing.map(async (e) => {
+        const data = await tmdbGet(`/${e.movie.media_type}/${e.movie.tmdb_id}`, { language: "en-US" });
+        const ids = (data.genres || []).map((g) => g.id).join(",");
+        await prisma.movie.update({ where: { id: e.movie.id }, data: { genreIds: ids || "-" } });
+        e.movie.genreIds = ids || "-";
+      })
+    );
+    const counts = new Map();
+    for (const e of entries) {
+      for (const g of e.movie.genreIds.split(",")) {
+        const gid = Number(g);
+        if (gid) counts.set(gid, (counts.get(gid) || 0) + (e.status === "SEEN" ? 2 : 1));
+      }
+    }
+    const names = await genreNames(language);
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([gid, count]) => ({ id: gid, name: names.get(gid) || String(gid), count }));
+  } catch (error) {
+    console.error("❌ Genres favoris :", error?.code || error?.message);
+    return [];
+  }
+};
 
 app.get("/users/:id", actionRateLimit, optionalAuth, async (req, res) => {
   const id = parseId(req.params.id);
@@ -508,11 +588,12 @@ app.get("/users/:id", actionRateLimit, optionalAuth, async (req, res) => {
     if (await canView(user.privacyLibrary, viewerId, id)) {
       const [seen, series, episodes] = await Promise.all([
         prisma.watchlist.count({ where: { userId: id, status: "SEEN", movie: { media_type: "movie" } } }),
-        prisma.watchlist.count({ where: { userId: id, movie: { media_type: "tv" }, status: { not: "JUNK" } } }),
+        prisma.watchlist.count({ where: { userId: id, movie: { media_type: "tv" }, status: { notIn: ["JUNK", "IGNORED"] } } }),
         prisma.episodeWatch.aggregate({ where: { userId: id }, _count: { _all: true }, _sum: { runtime: true } }),
       ]);
       const minutes = (episodes._sum.runtime || 0) + seen * 105; // durée moyenne estimée pour les films
       out.stats = { moviesSeen: seen, seriesFollowed: series, episodesWatched: episodes._count._all, hoursWatched: Math.round(minutes / 60) };
+      out.stats.topGenres = await topGenres(id, langOf(req.query.lang));
       const favorites = await prisma.watchlist.findMany({ where: { userId: id, isFavorite: true }, include: { movie: true }, take: 12 });
       out.favorites = favorites.map((f) => ({ tmdb_id: f.movie.tmdb_id, title: f.movie.title, media_type: f.movie.media_type, poster_path: f.movie.poster_path }));
     }
@@ -567,7 +648,7 @@ const listByFilter = (label, buildWhere) => async (req, res) => {
 app.get(
   "/watchlist",
   authMiddleware,
-  listByFilter("Erreur récupération watchlist", { status: { not: "JUNK" } })
+  listByFilter("Erreur récupération watchlist", { status: { notIn: ["JUNK", "IGNORED"] } })
 );
 app.get("/seen", authMiddleware, listByFilter("Erreur récupération films vus", { status: "SEEN" }));
 app.get("/favorites", authMiddleware, listByFilter("Erreur récupération favoris", { isFavorite: true }));
@@ -601,6 +682,10 @@ app.post("/watchlist", authMiddleware, async (req, res) => {
       where: { movieId: movie.id, userId },
     });
 
+    if (existingEntry?.status === "IGNORED") {
+      await prisma.watchlist.update({ where: { id: existingEntry.id }, data: { status: "WATCHLIST" } });
+      return res.status(201).json({ message: "Film ajouté à la watchlist", movieId: movie.id });
+    }
     if (existingEntry) {
       return res.status(400).json({ error: "Ce film est déjà dans la watchlist", movieId: movie.id });
     }
@@ -627,6 +712,74 @@ app.delete("/watchlist/:movieId", actionRateLimit, authMiddleware, async (req, r
   }
 });
 
+// Titres ignorés (swipe à gauche) : stockés en base avec le statut IGNORED
+app.get("/ignored", actionRateLimit, authMiddleware, async (req, res) => {
+  try {
+    const entries = await prisma.watchlist.findMany({ where: { userId: req.userId, status: "IGNORED" }, include: { movie: true } });
+    res.json(entries.map((e) => ({ movieId: e.movieId, tmdb_id: e.movie.tmdb_id, media_type: e.movie.media_type })));
+  } catch (error) {
+    serverError(res, "Erreur titres ignorés", error);
+  }
+});
+
+const upsertMovieFromBody = (body) => {
+  const tmdbId = parseId(body?.tmdb_id);
+  const title = cleanString(body?.title, 300);
+  const mediaType = ["movie", "tv"].includes(body?.media_type) ? body.media_type : null;
+  if (!tmdbId || !title || !mediaType) return null;
+  const poster = typeof body.poster_path === "string" ? body.poster_path.slice(0, 300) : "";
+  return prisma.movie.upsert({
+    where: { tmdb_id: tmdbId },
+    update: {},
+    create: { tmdb_id: tmdbId, title, media_type: mediaType, poster_path: poster },
+  });
+};
+
+app.post("/ignored", actionRateLimit, authMiddleware, async (req, res) => {
+  try {
+    const pending = upsertMovieFromBody(req.body);
+    if (!pending) return res.status(400).json({ error: "tmdb_id, title et media_type valides sont requis" });
+    const movie = await pending;
+    const existing = await prisma.watchlist.findFirst({ where: { movieId: movie.id, userId: req.userId } });
+    if (!existing) await prisma.watchlist.create({ data: { movieId: movie.id, userId: req.userId, status: "IGNORED" } });
+    res.status(existing ? 200 : 201).json({ movieId: movie.id, created: !existing });
+  } catch (error) {
+    serverError(res, "Erreur ignorer le titre", error);
+  }
+});
+
+// Série abandonnée (par utilisateur) ; crée l'entrée de bibliothèque si besoin
+app.put("/library/abandoned", actionRateLimit, authMiddleware, async (req, res) => {
+  if (typeof req.body?.abandoned !== "boolean") return res.status(400).json({ error: "abandoned doit être un booléen" });
+  try {
+    const pending = upsertMovieFromBody(req.body);
+    if (!pending) return res.status(400).json({ error: "tmdb_id, title et media_type valides sont requis" });
+    const movie = await pending;
+    const existing = await prisma.watchlist.findFirst({ where: { movieId: movie.id, userId: req.userId } });
+    if (existing) {
+      await prisma.watchlist.update({
+        where: { id: existing.id },
+        data: { abandoned: req.body.abandoned, ...(existing.status === "IGNORED" ? { status: "WATCHLIST" } : {}) },
+      });
+    } else {
+      await prisma.watchlist.create({ data: { movieId: movie.id, userId: req.userId, abandoned: req.body.abandoned } });
+    }
+    res.json({ movieId: movie.id, abandoned: req.body.abandoned });
+  } catch (error) {
+    serverError(res, "Erreur série abandonnée", error);
+  }
+});
+
+// Séries abandonnées de l'utilisateur (ids TMDB)
+app.get("/library/abandoned", actionRateLimit, authMiddleware, async (req, res) => {
+  try {
+    const entries = await prisma.watchlist.findMany({ where: { userId: req.userId, abandoned: true }, include: { movie: { select: { tmdb_id: true } } } });
+    res.json(entries.map((e) => e.movie.tmdb_id));
+  } catch (error) {
+    serverError(res, "Erreur séries abandonnées", error);
+  }
+});
+
 // Statut d'un titre (id TMDB) dans la bibliothèque de l'utilisateur courant
 app.get("/library/:tmdbId", actionRateLimit, authMiddleware, async (req, res) => {
   const tmdbId = parseId(req.params.tmdbId);
@@ -636,6 +789,7 @@ app.get("/library/:tmdbId", actionRateLimit, authMiddleware, async (req, res) =>
     const entry = await prisma.watchlist.findFirst({
       where: { userId: req.userId, movie: { tmdb_id: tmdbId } },
     });
+    if (entry?.status === "IGNORED") return res.json({ inLibrary: false, ignored: true, movieId: entry.movieId });
     res.json(
       entry
         ? {
@@ -644,6 +798,7 @@ app.get("/library/:tmdbId", actionRateLimit, authMiddleware, async (req, res) =>
             status: entry.status,
             isFavorite: entry.isFavorite,
             rating: entry.rating,
+            abandoned: entry.abandoned,
           }
         : { inLibrary: false }
     );
@@ -763,7 +918,7 @@ const validType = (type) => ["movie", "tv"].includes(type);
 app.get("/tmdb/trending", async (req, res) => {
   const page = parseId(req.query.page) || 1;
   try {
-    const data = await tmdbGet("/trending/all/day", { language: "fr-CH", page: Math.min(page, 500) });
+    const data = await tmdbGet("/trending/all/day", { language: langOf(req.query.lang), page: Math.min(page, 500) });
     res.json(data);
   } catch (error) {
     tmdbError(res, "Erreur tendances TMDB", error);
@@ -781,7 +936,7 @@ app.get("/tmdb/details/:tmdbId/:type", async (req, res) => {
 
   try {
     const movieDetails = await tmdbGet(`/${type}/${tmdbId}`, {
-      language: "fr-FR",
+      language: langOf(req.query.lang),
       append_to_response: "credits,videos,images,watch/providers,external_ids",
     });
 
@@ -828,7 +983,7 @@ app.get("/tmdb/recommendations/:tmdbId/:type", async (req, res) => {
   }
 
   try {
-    res.json(await tmdbGet(`/${type}/${tmdbId}/recommendations`, { language: "fr-FR" }));
+    res.json(await tmdbGet(`/${type}/${tmdbId}/recommendations`, { language: langOf(req.query.lang) }));
   } catch (error) {
     tmdbError(res, "Erreur recommandations TMDB", error);
   }
@@ -885,7 +1040,7 @@ app.get("/tmdb/find/:source/:id", actionRateLimit, async (req, res) => {
   const id = String(req.params.id);
   if (!source || !/^(tt)?\d{1,10}$/.test(id)) return res.status(400).json({ error: "Identifiant invalide" });
   try {
-    const data = await tmdbGet(`/find/${id}`, { external_source: source, language: "fr-FR" });
+    const data = await tmdbGet(`/find/${id}`, { external_source: source, language: langOf(req.query.lang) });
     res.json({ movies: data.movie_results || [], tv: data.tv_results || [] });
   } catch (error) {
     tmdbError(res, "Erreur correspondance TMDB", error);
@@ -898,7 +1053,7 @@ app.get("/tmdb/tv/:tmdbId/seasons", async (req, res) => {
   if (!tmdbId) return res.status(400).json({ error: "Identifiant invalide" });
 
   try {
-    const show = await tmdbGet(`/tv/${tmdbId}`, { language: "fr-FR" });
+    const show = await tmdbGet(`/tv/${tmdbId}`, { language: langOf(req.query.lang) });
     const seasons = (show.seasons || []).map((season) => ({
       id: season.id,
       season_number: season.season_number,
@@ -923,7 +1078,7 @@ app.get("/tmdb/tv/:tmdbId/season/:seasonNumber", async (req, res) => {
   }
 
   try {
-    res.json(await getSeason(tmdbId, seasonNumber));
+    res.json(await getSeason(tmdbId, seasonNumber, langOf(req.query.lang)));
   } catch (error) {
     if (error?.response?.status === 404) return res.status(404).json({ error: "Saison introuvable" });
     tmdbError(res, "Erreur épisodes TMDB", error);
@@ -932,7 +1087,7 @@ app.get("/tmdb/tv/:tmdbId/season/:seasonNumber", async (req, res) => {
 
 app.get("/tmdb/genres", async (req, res) => {
   try {
-    const data = await tmdbGet("/genre/movie/list", { language: "fr-FR" });
+    const data = await tmdbGet("/genre/movie/list", { language: langOf(req.query.lang) });
     res.json(data.genres);
   } catch (error) {
     tmdbError(res, "Erreur chargement genres", error);
@@ -1069,7 +1224,7 @@ app.get("/tmdb/providers/:type", async (req, res) => {
   if (!validType(req.params.type)) return res.status(400).json({ error: "Type invalide" });
   const region = REGION_REGEX.test(req.query.region) ? req.query.region : "FR";
   try {
-    const data = await tmdbGet(`/watch/providers/${req.params.type}`, { watch_region: region, language: "fr-FR" });
+    const data = await tmdbGet(`/watch/providers/${req.params.type}`, { watch_region: region, language: langOf(req.query.lang) });
     res.json(
       (data.results || [])
         .sort((a, b) => (a.display_priority ?? 999) - (b.display_priority ?? 999))
