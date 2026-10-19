@@ -41,7 +41,8 @@ const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 // Hash factice : même coût bcrypt si l'email n'existe pas (limite l'énumération par timing)
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync("flixmatch-timing-dummy", 10);
 
-const TMDB_BASE_URL = "https://api.themoviedb.org/3";
+// Surchargeable uniquement pour les tests de bout en bout (faux TMDB local)
+const TMDB_BASE_URL = (!isProduction && process.env.TMDB_BASE_URL) || "https://api.themoviedb.org/3";
 const TMDB_KEY = process.env.TMDB_API_KEY || "";
 // Accepte un token v4 (Bearer) ou une clé v3 (32 caractères hexadécimaux).
 const TMDB_IS_V3_KEY = /^[a-f0-9]{32}$/i.test(TMDB_KEY);

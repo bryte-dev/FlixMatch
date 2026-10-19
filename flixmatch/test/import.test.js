@@ -113,6 +113,14 @@ test("parseTrakt : JSON (watched-shows, ratings, watchlist, history)", () => {
   assert.equal(byTitle(r, "Dune").status, "WATCHLIST");
 });
 
+test("collecteur : même titre sans année mais ids TMDB différents = deux œuvres", () => {
+  const out = parseFlixMatch([{ name: "f.json", text: JSON.stringify({ format: "flixmatch", version: 2, items: [
+    { kind: "movie", title: "Dune", ids: { tmdb: 841 }, status: "SEEN" },
+    { kind: "movie", title: "Dune", ids: { tmdb: 438631 }, status: "WATCHLIST" },
+  ] }) }]);
+  assert.equal(out.items.length, 2);
+});
+
 test("ratingFrom : conversions d'échelle", () => {
   assert.equal(ratingFrom("0.5", 5), 1);
   assert.equal(ratingFrom("3,5", 5), 4);

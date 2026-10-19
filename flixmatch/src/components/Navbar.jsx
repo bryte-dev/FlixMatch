@@ -37,7 +37,9 @@ function Navbar() {
   const { pathname } = useLocation();
 
   // Menu mobile : fermé à chaque changement de page et avec Échap
-  useEffect(() => setMenuOpen(false), [pathname]);
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
   useEffect(() => {
     if (!menuOpen) return undefined;
     const onKey = (e) => e.key === "Escape" && setMenuOpen(false);

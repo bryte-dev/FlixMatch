@@ -40,7 +40,11 @@ const PrivateRoute = ({ children }) => {
 
 const ScrollToTop = () => {
   const { pathname } = useLocation();
-  useEffect(() => window.scrollTo(0, 0), [pathname]);
+  // Accolades obligatoires : dans les Chrome récents, scrollTo renvoie une promesse, que React
+  // prendrait pour une fonction de nettoyage (plantage « destroy is not a function »)
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
   return null;
 };
 

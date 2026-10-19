@@ -82,8 +82,9 @@ export class ImportCollector {
     let item = null;
     for (const key of this.aliasKeys(kind, ids, title, year)) {
       const found = this.aliases.get(key);
-      // deux œuvres de même titre mais d'années différentes (remakes) restent distinctes
-      if (found && !(year && found.year && found.year !== year) && !(kind && found.kind && found.kind !== kind)) {
+      // Restent distinctes : deux œuvres de même titre mais d'années, de types ou d'identifiants différents
+      const idConflict = ["tmdb", "imdb", "tvdb"].some((k) => ids[k] && found?.ids[k] && ids[k] !== found.ids[k]);
+      if (found && !idConflict && !(year && found.year && found.year !== year) && !(kind && found.kind && found.kind !== kind)) {
         item = found;
         break;
       }
