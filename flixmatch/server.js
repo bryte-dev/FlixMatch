@@ -34,7 +34,11 @@ if (missingEnv.length > 0) {
 // Hors production uniquement : secret éphémère aléatoire (jamais une valeur connue).
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString("hex");
 const JWT_EXPIRES_IN = "7d";
+// Algorithme imposé à la vérification : refuse tout autre "alg" (dont "none")
+const JWT_VERIFY_OPTIONS = { algorithms: ["HS256"] };
 const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+// Hash factice : même coût bcrypt si l'email n'existe pas (limite l'énumération par timing)
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync("flixmatch-timing-dummy", 10);
 
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 const TMDB_KEY = process.env.TMDB_API_KEY || "";
@@ -68,6 +72,48 @@ const cookieOptions = {
   path: "/",
 };
 
+// ---------- Sécurité : en-têtes HTTP ----------
+// Déclaré avant express.static pour que la page HTML et les fichiers statiques reçoivent aussi la CSP.
+
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  if (isProduction) {
+    res.setHeader("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
+    // Le service worker récupère lui-même les affiches TMDB : connect-src doit l'autoriser
+    const connectSrc = ["'self'", "https://image.tmdb.org"];
+    for (const raw of [process.env.NEXT_PUBLIC_POSTHOG_HOST, process.env.VITE_POSTHOG_HOST]) {
+      if (!raw) continue;
+      try {
+        connectSrc.push(new URL(raw).origin);
+      } catch {
+        /* host analytics ignoré si l'URL est invalide */
+      }
+    }
+    res.setHeader(
+      "Content-Security-Policy",
+      [
+        "default-src 'self'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+        "object-src 'none'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com",
+        "manifest-src 'self'",
+        "worker-src 'self'",
+        "img-src 'self' data: blob: https://image.tmdb.org https://www.themoviedb.org",
+        "frame-src https://www.youtube-nocookie.com",
+        `connect-src ${connectSrc.join(" ")}`,
+      ].join("; ")
+    );
+  }
+  next();
+});
+
 // ---------- Frontend statique ----------
 
 const distDir = path.join(__dirname, "dist");
@@ -95,6 +141,7 @@ const parseId = (value) => {
 };
 
 const isValidRating = (value) => Number.isInteger(value) && value >= 1 && value <= 5;
+const validMediaType = (value) => (value === "movie" || value === "tv" ? value : null);
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -203,18 +250,11 @@ const createRateLimit = (windowMs, max, message) => {
 const authRateLimit = createRateLimit(15 * 60 * 1000, 30, "Trop de tentatives, réessaie plus tard");
 // Limite générale pour les actions d'écriture (épisodes, suppression d'avis)
 const actionRateLimit = createRateLimit(60 * 1000, 120, "Trop de requêtes, ralentis un peu");
+const searchRateLimit = createRateLimit(60 * 1000, 60, "Trop de recherches, ralentis un peu");
+const reviewRateLimit = createRateLimit(60 * 1000, 30, "Trop d'avis, ralentis un peu");
 
 
-// ---------- Sécurité : en-têtes, limitation globale, protection CSRF ----------
-
-app.use((req, res, next) => {
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-  if (isProduction) res.setHeader("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
-  next();
-});
+// ---------- Sécurité : limitation globale, protection CSRF ----------
 
 // Les requêtes qui modifient des données doivent venir de notre propre origine (ou de CORS_ORIGIN)
 const allowedOrigins = new Set((process.env.CORS_ORIGIN || "").split(",").map((o) => o.trim()).filter(Boolean));
@@ -237,14 +277,21 @@ app.use(createRateLimit(60 * 1000, 600, "Trop de requêtes, ralentis un peu"));
 
 // ---------- Auth ----------
 
-const authMiddleware = (req, res, next) => {
+const authMiddleware = async (req, res, next) => {
   const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
 
   if (!token) return res.status(401).json({ error: "Accès refusé, token manquant" });
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.userId = decoded.userId;
+    const decoded = jwt.verify(token, JWT_SECRET, JWT_VERIFY_OPTIONS);
+    const userId = parseId(decoded.userId);
+    if (!userId) return res.status(401).json({ error: "Token invalide ou expiré" });
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+    if (!user) {
+      res.clearCookie("token", cookieOptions);
+      return res.status(401).json({ error: "Token invalide ou expiré" });
+    }
+    req.userId = userId;
     next();
   } catch {
     res.status(401).json({ error: "Token invalide ou expiré" });
@@ -310,7 +357,7 @@ app.post("/register", authRateLimit, async (req, res) => {
     res.status(201).json({ message: "Utilisateur créé", userId: user.id });
   } catch (error) {
     if (error?.code === "P2002") {
-      return res.status(409).json({ error: "Un compte existe déjà avec cet email" });
+      return res.status(409).json({ error: "Impossible de créer le compte avec ces informations" });
     }
     serverError(res, "Erreur inscription", error);
   }
@@ -325,7 +372,7 @@ app.post("/login", authRateLimit, async (req, res) => {
 
   try {
     const user = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
-    const isValid = user ? await bcrypt.compare(password, user.password) : false;
+    const isValid = await bcrypt.compare(password, user?.password || DUMMY_PASSWORD_HASH);
     if (!user || !isValid) {
       return res.status(401).json({ error: "Email ou mot de passe incorrect" });
     }
@@ -349,7 +396,7 @@ const AVATAR_REGEX = /^(preset:[a-z0-9-]{1,20}|generated|data:image\/(png|jpeg|w
 const MAX_AVATAR_LENGTH = 70000;
 const accountSelect = { id: true, email: true, username: true, avatar: true, privacyProfile: true, privacyLibrary: true, privacyActivity: true };
 
-app.put("/account/update", authMiddleware, async (req, res) => {
+app.put("/account/update", actionRateLimit, authMiddleware, async (req, res) => {
   const { username, avatar, privacyProfile, privacyLibrary, privacyActivity } = req.body || {};
   const data = {};
 
@@ -382,30 +429,58 @@ app.put("/account/update", authMiddleware, async (req, res) => {
   }
 });
 
-// Suppression définitive du compte (mot de passe requis) et de toutes ses données
+// Avis de l'utilisateur + tout le fil de réponses qui en dépend : sinon les réponses
+// d'autres personnes deviendraient des avis principaux orphelins (parentId → NULL).
+const collectReviewThreads = async (tx, userId) => {
+  const ids = new Set((await tx.review.findMany({ where: { userId }, select: { id: true } })).map((r) => r.id));
+  let frontier = [...ids];
+  while (frontier.length > 0) {
+    const children = await tx.review.findMany({ where: { parentId: { in: frontier } }, select: { id: true } });
+    frontier = children.map((c) => c.id).filter((id) => !ids.has(id));
+    frontier.forEach((id) => ids.add(id));
+  }
+  return [...ids];
+};
+
+const wipeUserLibrary = async (tx, userId) => {
+  const reviewIds = await collectReviewThreads(tx, userId);
+  if (reviewIds.length > 0) await tx.review.deleteMany({ where: { id: { in: reviewIds } } });
+  await tx.episodeWatch.deleteMany({ where: { userId } });
+  await tx.watchlist.deleteMany({ where: { userId } });
+};
+
+const ACCOUNT_TX = { timeout: 20000, maxWait: 10000 };
+
+// Réinitialise listes, notes, avis et historique d'épisodes (le compte est conservé)
+app.post("/account/reset-data", authRateLimit, authMiddleware, async (req, res) => {
+  if (req.body?.confirm !== "RESET") {
+    return res.status(400).json({ error: "Confirmation invalide : envoie confirm=\"RESET\"" });
+  }
+  try {
+    await prisma.$transaction((tx) => wipeUserLibrary(tx, req.userId), ACCOUNT_TX);
+    res.json({ message: "Données réinitialisées" });
+  } catch (error) {
+    serverError(res, "Erreur réinitialisation des données", error);
+  }
+});
+
+// Suppression définitive du compte (mot de passe + confirmation DELETE) et de toutes ses données
 app.delete("/account", authRateLimit, authMiddleware, async (req, res) => {
-  const { password } = req.body || {};
+  const { password, confirm } = req.body || {};
   if (typeof password !== "string" || !password) return res.status(400).json({ error: "Mot de passe requis" });
+  if (confirm !== "DELETE") return res.status(400).json({ error: "Tape DELETE pour confirmer" });
   try {
     const user = await prisma.user.findUnique({ where: { id: req.userId } });
     if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(403).json({ error: "Mot de passe incorrect" });
     }
-    // Avis de l'utilisateur + toutes les réponses qui en dépendent (arbre de réponses), puis le reste
-    const toDelete = new Set((await prisma.review.findMany({ where: { userId: req.userId }, select: { id: true } })).map((r) => r.id));
-    let frontier = [...toDelete];
-    while (frontier.length > 0) {
-      const children = await prisma.review.findMany({ where: { parentId: { in: frontier }, id: { notIn: [...toDelete] } }, select: { id: true } });
-      frontier = children.map((c) => c.id);
-      frontier.forEach((id) => toDelete.add(id));
-    }
-    // Feuilles d'abord (les ids les plus récents sont les plus profonds) pour respecter la clé étrangère
-    const ids = [...toDelete].sort((x, y) => y - x);
-    await prisma.$transaction([
-      ...ids.map((id) => prisma.review.deleteMany({ where: { id } })),
-      prisma.watchlist.deleteMany({ where: { userId: req.userId } }),
-    ]);
-    await prisma.user.delete({ where: { id: req.userId } });
+    await prisma.$transaction(async (tx) => {
+      await wipeUserLibrary(tx, req.userId);
+      await tx.follow.deleteMany({
+        where: { OR: [{ followerId: req.userId }, { followingId: req.userId }] },
+      });
+      await tx.user.delete({ where: { id: req.userId } });
+    }, ACCOUNT_TX);
     res.clearCookie("token", cookieOptions);
     res.json({ message: "Compte supprimé" });
   } catch (error) {
@@ -418,7 +493,7 @@ app.delete("/account", authRateLimit, authMiddleware, async (req, res) => {
 const optionalAuth = (req, res, next) => {
   const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
   try {
-    req.userId = token ? jwt.verify(token, JWT_SECRET).userId : null;
+    req.userId = token ? parseId(jwt.verify(token, JWT_SECRET, JWT_VERIFY_OPTIONS).userId) : null;
   } catch {
     req.userId = null;
   }
@@ -654,13 +729,13 @@ app.get("/seen", authMiddleware, listByFilter("Erreur récupération films vus",
 app.get("/favorites", authMiddleware, listByFilter("Erreur récupération favoris", { isFavorite: true }));
 app.get("/junk", authMiddleware, listByFilter("Erreur récupération corbeille", { status: "JUNK" }));
 
-app.post("/watchlist", authMiddleware, async (req, res) => {
+app.post("/watchlist", actionRateLimit, authMiddleware, async (req, res) => {
   const { tmdb_id, title, media_type, poster_path } = req.body || {};
   const userId = req.userId;
 
   const tmdbId = parseId(tmdb_id);
   const cleanTitle = cleanString(title, 300);
-  const cleanMediaType = cleanString(media_type, 20);
+  const cleanMediaType = validMediaType(media_type);
   if (!tmdbId || !cleanTitle || !cleanMediaType) {
     return res.status(400).json({ error: "tmdb_id, title et media_type valides sont requis" });
   }
@@ -836,6 +911,7 @@ const updateEntry = (label, okMessage, buildData, { requireExisting = false, val
 
 app.put(
   "/watchlist/:movieId/seen",
+  actionRateLimit,
   authMiddleware,
   updateEntry(
     "Erreur marquage comme vu",
@@ -847,6 +923,7 @@ app.put(
 
 app.put(
   "/seen/:movieId/remove",
+  actionRateLimit,
   authMiddleware,
   updateEntry(
     "Erreur retrait de SEEN",
@@ -857,6 +934,7 @@ app.put(
 
 app.put(
   "/watchlist/:movieId/favorite",
+  actionRateLimit,
   authMiddleware,
   updateEntry(
     "Erreur mise à jour favoris",
@@ -871,6 +949,7 @@ app.put(
 
 app.put(
   "/watchlist/:movieId/junk",
+  actionRateLimit,
   authMiddleware,
   updateEntry("Erreur corbeille", "Film déplacé vers la corbeille", () => ({
     status: "JUNK",
@@ -880,13 +959,14 @@ app.put(
 
 app.put(
   "/junk/:movieId/restore",
+  actionRateLimit,
   authMiddleware,
   updateEntry("Erreur restauration", "Film restauré dans la Watchlist", () => ({
     status: "WATCHLIST",
   }))
 );
 
-app.put("/seen/:movieId/rating", authMiddleware, async (req, res) => {
+app.put("/seen/:movieId/rating", actionRateLimit, authMiddleware, async (req, res) => {
   const movieId = parseId(req.params.movieId);
   const rating = Number(req.body?.rating);
 
@@ -1010,7 +1090,7 @@ const multiSearch = async (query, type, page, lang) => {
   };
 };
 
-app.get("/tmdb/search/:query", async (req, res) => {
+app.get("/tmdb/search/:query", searchRateLimit, async (req, res) => {
   const query = cleanString(req.params.query, 200);
   if (!query) return res.status(400).json({ error: "Recherche invalide" });
 
@@ -1022,7 +1102,7 @@ app.get("/tmdb/search/:query", async (req, res) => {
   }
 });
 
-app.get("/tmdb/search", async (req, res) => {
+app.get("/tmdb/search", searchRateLimit, async (req, res) => {
   const query = cleanString(req.query.query, 200);
   const type = Object.hasOwn(SEARCH_ENDPOINTS, req.query.type) ? req.query.type : "all";
   if (!query) return res.status(400).json({ error: "Recherche invalide" });
@@ -1094,7 +1174,7 @@ app.get("/tmdb/genres", async (req, res) => {
   }
 });
 
-app.get("/tmdb/advanced-search", async (req, res) => {
+app.get("/tmdb/advanced-search", searchRateLimit, async (req, res) => {
   const { query, genre, year, minRating, maxDuration, originalLanguage, providers, sort } = req.query;
   const type = req.query.type === "tv" ? "tv" : "movie";
   const page = Math.min(parseId(req.query.page) || 1, 500);
@@ -1276,7 +1356,7 @@ app.get("/reviews/:tmdbId", async (req, res) => {
 });
 
 // Avis principal ou réponse, identifié par l'id TMDB du film
-app.post("/reviews", authMiddleware, async (req, res) => {
+app.post("/reviews", reviewRateLimit, authMiddleware, async (req, res) => {
   const { movieId, title, media_type, poster_path, comment, rating, parentId } = req.body || {};
   const userId = req.userId;
 
@@ -1305,7 +1385,7 @@ app.post("/reviews", authMiddleware, async (req, res) => {
         create: {
           tmdb_id: tmdbId,
           title: cleanTitle,
-          media_type: cleanString(media_type, 20) || "movie",
+          media_type: validMediaType(media_type) || "movie",
           poster_path: typeof poster_path === "string" ? poster_path.slice(0, 300) : "",
         },
       });
@@ -1336,7 +1416,7 @@ app.post("/reviews", authMiddleware, async (req, res) => {
 });
 
 // Avis principal sur un film identifié par son id interne (page « Vus »)
-app.post("/reviews/:movieId", authMiddleware, async (req, res) => {
+app.post("/reviews/:movieId", reviewRateLimit, authMiddleware, async (req, res) => {
   const movieId = parseId(req.params.movieId);
   const rating = Number(req.body?.rating);
   const comment = cleanString(req.body?.comment, 2000);

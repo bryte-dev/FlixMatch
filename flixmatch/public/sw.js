@@ -1,9 +1,9 @@
 // Service worker FlixMatch : cache du shell + des images, offline basique. Jamais de cache pour l'API.
-const VERSION = "v1";
+const VERSION = "v2";
 const SHELL_CACHE = `flixmatch-shell-${VERSION}`;
 const IMAGE_CACHE = `flixmatch-img-${VERSION}`;
 const MAX_IMAGES = 200;
-const SHELL_URLS = ["/", "/manifest.webmanifest", "/FlixMatchLogo.png", "/default-movie.png"];
+const SHELL_URLS = ["/", "/theme-init.js", "/manifest.webmanifest", "/FlixMatchLogo.png", "/default-movie.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL_URLS)).then(() => self.skipWaiting()));

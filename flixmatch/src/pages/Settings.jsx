@@ -8,6 +8,7 @@ import { SWIPE_ACTIONS, saveSettings, useSettings } from "../settings";
 import { LANGUAGES, useT } from "../i18n";
 import { THEMES, isUnlocked } from "../theme";
 import { Button, PageHeader } from "../components/ui";
+import PrivacyDangerZone from "../components/PrivacyDangerZone";
 import { posterUrl } from "../utils";
 
 const REGIONS = {
@@ -150,10 +151,16 @@ export default function Settings() {
       </Section>
 
       {user && (
-        <Section title="Mes données">
-          <Button onClick={exportData} pending={exporting} pendingLabel="Export…">Exporter mes données (JSON)</Button>
-          <Link to="/import" className="btn btn-secondary">Importer depuis TV Time</Link>
-        </Section>
+        <>
+          <Section title="Mes données">
+            <Button onClick={exportData} pending={exporting} pendingLabel="Export…">Exporter mes données (JSON)</Button>
+            <Link to="/import" className="btn btn-secondary">Importer depuis TV Time</Link>
+            <Link to="/account" className="btn btn-secondary">Profil, confidentialité et compte</Link>
+          </Section>
+          <Section title="Réinitialiser ou supprimer">
+            <PrivacyDangerZone />
+          </Section>
+        </>
       )}
     </div>
   );

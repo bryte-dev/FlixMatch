@@ -45,8 +45,8 @@ model Movie {
   media_type  String
   poster_path String
   genreIds    String     @default("")  // ids de genres TMDB séparés par des virgules, "-" = aucun, "" = pas encore chargé
-  watchlist   Watchlist[]  // 🔥 Changement en `Watchlist[]` pour autoriser plusieurs entrées
-  reviews     Review[]  // 🔥 Un film peut recevoir plusieurs reviews
+  watchlist   Watchlist[]
+  reviews     Review[]
 }
 
 model Watchlist {
@@ -60,9 +60,10 @@ model Watchlist {
   createdAt  DateTime @default(now())
 
   movie Movie @relation(fields: [movieId], references: [id])
-  user  User  @relation(fields: [userId], references: [id])
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([movieId, userId]) // 🔥 Garantit qu'un film ne peut apparaître qu'une seule fois par utilisateur
+  @@unique([movieId, userId])
+  @@index([userId])
 }
 
 model Review {
@@ -73,12 +74,15 @@ model Review {
   comment    String
   createdAt  DateTime  @default(now())
 
-  user       User      @relation(fields: [userId], references: [id])
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   movie      Movie     @relation(fields: [movieId], references: [id])
 
-  parentId   Int?      
-  parent     Review?   @relation(name: "ReviewReplies", fields: [parentId], references: [id])
+  parentId   Int?
+  parent     Review?   @relation(name: "ReviewReplies", fields: [parentId], references: [id], onDelete: SetNull)
   replies    Review[]  @relation(name: "ReviewReplies")
+
+  @@index([userId])
+  @@index([movieId])
 }
 
 // Suivi des épisodes de séries TV vus par un utilisateur (un enregistrement = un épisode vu)
