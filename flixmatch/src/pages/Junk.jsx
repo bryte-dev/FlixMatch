@@ -6,11 +6,13 @@ import useBusy from "../hooks/useBusy";
 import useLibrary from "../hooks/useLibrary";
 import LibraryView from "../components/LibraryView";
 import MediaCard from "../components/MediaCard";
-import { Button, MediaGrid } from "../components/ui";
+import { Button, MediaGrid, ShowMore } from "../components/ui";
+import useIncremental from "../hooks/useIncremental";
 import { errorMessage, posterUrl } from "../utils";
 
 function Junk() {
   const library = useLibrary("/junk");
+  const paging = useIncremental(library.entries);
   const toast = useToast();
   const { isBusy, run } = useBusy();
 
@@ -39,7 +41,7 @@ function Junk() {
       }}
     >
       <MediaGrid>
-        {library.entries.map(({ movie }) => (
+        {paging.visible.map(({ movie }) => (
           <MediaCard
             key={movie.id}
             to={`/${movie.media_type}/${movie.tmdb_id}`}
@@ -60,6 +62,7 @@ function Junk() {
           </MediaCard>
         ))}
       </MediaGrid>
+      <ShowMore paging={paging} />
     </LibraryView>
   );
 }

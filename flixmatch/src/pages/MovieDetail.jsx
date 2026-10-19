@@ -204,7 +204,7 @@ function MovieDetail() {
       <div className="relative isolate overflow-hidden">
         {backdrop && (
           <>
-            <img src={backdrop} alt="" className="absolute inset-0 -z-20 h-full w-full object-cover opacity-30" />
+            <img src={backdrop} alt="" data-fallback="data:image/gif;base64,R0lGODlhAQABAAAAACw=" className="absolute inset-0 -z-20 h-full w-full object-cover opacity-30" />
             <div className="absolute inset-0 -z-10 bg-gradient-to-t from-ink-950 via-ink-950/80 to-ink-950/30" />
           </>
         )}
@@ -215,7 +215,7 @@ function MovieDetail() {
             className="aspect-[2/3] w-56 shrink-0 self-center rounded-2xl border border-white/10 bg-ink-700 object-cover shadow-2xl shadow-black/50 md:w-72 md:self-start"
           />
           <div className="min-w-0 flex-1">
-            <h1 className="text-3xl font-extrabold tracking-tight sm:text-5xl">
+            <h1 className="break-anywhere text-3xl font-extrabold tracking-tight sm:text-5xl">
               {title} {year && <span className="font-medium text-zinc-400">({year})</span>}
             </h1>
             {movie.tagline && <p className="mt-2 text-lg italic text-zinc-400">{movie.tagline}</p>}
@@ -343,6 +343,7 @@ function MovieDetail() {
                   <a href={`https://www.google.com/search?q=${encodeURIComponent(actor.name)}`} target="_blank" rel="noopener noreferrer" className="group block">
                     <img
                       src={posterUrl(actor.profile_path, "w185") || "/default-actor.png"}
+                      data-fallback="/default-actor.png"
                       alt=""
                       loading="lazy"
                       className="mx-auto h-28 w-28 rounded-full border border-white/10 bg-ink-700 object-cover transition group-hover:border-brand-400"

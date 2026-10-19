@@ -22,8 +22,18 @@ export default function Activity() {
       setFound([]);
       return undefined;
     }
-    const timer = setTimeout(() => axios.get("/users/search", { params: { q } }).then((r) => setFound(r.data)).catch(() => setFound([])), 350);
-    return () => clearTimeout(timer);
+    // Une réponse lente d'une recherche précédente ne doit pas écraser la plus récente
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      axios
+        .get("/users/search", { params: { q }, signal: controller.signal })
+        .then((r) => setFound(r.data))
+        .catch((err) => !axios.isCancel(err) && setFound([]));
+    }, 350);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [q]);
 
   return (

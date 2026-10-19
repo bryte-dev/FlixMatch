@@ -182,14 +182,61 @@ const averageOf = (reviews) => {
   return rated.reduce((sum, r) => sum + r.rating, 0) / rated.length;
 };
 
-const tmdbGet = async (route, params = {}) => {
-  const response = await axios.get(`${TMDB_BASE_URL}${route}`, {
-    params: TMDB_IS_V3_KEY ? { ...params, api_key: TMDB_KEY } : params,
-    headers: TMDB_IS_V3_KEY ? {} : { Authorization: "Bearer " + TMDB_KEY },
-    timeout: 10000,
-  });
-  return response.data;
+const TMDB_TIMEOUT_MS = 8000;
+const isTransient = (error) => {
+  const status = error?.response?.status;
+  return !status || status === 429 || status >= 500;
 };
+
+// Appel TMDB avec un nouvel essai court sur erreur passagère (réseau, 429, 5xx)
+const tmdbGet = async (route, params = {}) => {
+  const request = () =>
+    axios.get(`${TMDB_BASE_URL}${route}`, {
+      params: TMDB_IS_V3_KEY ? { ...params, api_key: TMDB_KEY } : params,
+      headers: TMDB_IS_V3_KEY ? {} : { Authorization: "Bearer " + TMDB_KEY },
+      timeout: TMDB_TIMEOUT_MS,
+    });
+  try {
+    return (await request()).data;
+  } catch (error) {
+    if (!isTransient(error)) throw error;
+    await new Promise((resolve) => setTimeout(resolve, error?.response?.status === 429 ? 1000 : 300));
+    return (await request()).data;
+  }
+};
+
+// Cache mémoire des réponses TMDB peu changeantes. Si TMDB est lent ou en panne, on ressert
+// la dernière réponse connue (même expirée) plutôt qu'une erreur.
+const tmdbCache = new Map();
+const TMDB_CACHE_MAX = 800;
+const tmdbCached = async (route, params, ttlMs, transform = (d) => d) => {
+  const key = route + "?" + JSON.stringify(params);
+  const hit = tmdbCache.get(key);
+  if (hit && Date.now() - hit.at < ttlMs) return hit.data;
+  try {
+    const data = transform(await tmdbGet(route, params));
+    tmdbCache.delete(key);
+    tmdbCache.set(key, { at: Date.now(), data });
+    if (tmdbCache.size > TMDB_CACHE_MAX) tmdbCache.delete(tmdbCache.keys().next().value);
+    return data;
+  } catch (error) {
+    if (hit && isTransient(error)) return hit.data;
+    throw error;
+  }
+};
+const MINUTE = 60 * 1000;
+
+// Fiche détaillée allégée : seuls les champs affichés sont gardés (réponse et cache plus légers)
+const slimDetails = (d) => ({
+  ...d,
+  credits: d.credits
+    ? {
+        cast: (d.credits.cast || []).slice(0, 20),
+        crew: (d.credits.crew || []).filter((p) => p.job === "Director"),
+      }
+    : undefined,
+  videos: d.videos ? { results: (d.videos.results || []).filter((v) => v.site === "YouTube").slice(0, 12) } : undefined,
+});
 
 // Petit cache mémoire pour éviter de marteler TMDB (saisons d'une série)
 const seasonCache = new Map();
@@ -619,9 +666,13 @@ app.get("/feed", actionRateLimit, authMiddleware, async (req, res) => {
     const ids = followed.map((f) => f.followingId);
     if (ids.length === 0) return res.json([]);
     // On ne garde que les amis qui acceptent de partager leur activité avec l'utilisateur
-    const owners = await prisma.user.findMany({ where: { id: { in: ids } }, select: { ...publicCard, privacyActivity: true } });
-    const visible = [];
-    for (const o of owners) if (await canView(o.privacyActivity, req.userId, o.id)) visible.push(o);
+    // Une seule requête pour les abonnements réciproques (au lieu d'une par personne suivie)
+    const [owners, followsBack] = await Promise.all([
+      prisma.user.findMany({ where: { id: { in: ids } }, select: { ...publicCard, privacyActivity: true } }),
+      prisma.follow.findMany({ where: { followerId: { in: ids }, followingId: req.userId }, select: { followerId: true } }),
+    ]);
+    const mutual = new Set(followsBack.map((f) => f.followerId));
+    const visible = owners.filter((o) => o.privacyActivity === "public" || (o.privacyActivity === "friends" && mutual.has(o.id)));
     const visibleIds = visible.map((o) => o.id);
     if (visibleIds.length === 0) return res.json([]);
     const byId = new Map(visible.map((o) => [o.id, { id: o.id, username: o.username, avatar: o.avatar }]));
@@ -763,6 +814,7 @@ const listByFilter = (label, buildWhere) => async (req, res) => {
     const entries = await prisma.watchlist.findMany({
       where: { userId: req.userId, ...buildWhere },
       include: { movie: true },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
     res.json(entries);
   } catch (error) {
@@ -1050,7 +1102,7 @@ const validType = (type) => ["movie", "tv"].includes(type);
 app.get("/tmdb/trending", async (req, res) => {
   const page = parseId(req.query.page) || 1;
   try {
-    const data = await tmdbGet("/trending/all/day", { language: langOf(req.query.lang), page: Math.min(page, 500) });
+    const data = await tmdbCached("/trending/all/day", { language: langOf(req.query.lang), page: Math.min(page, 500) }, 15 * MINUTE);
     res.json(data);
   } catch (error) {
     tmdbError(res, "Erreur tendances TMDB", error);
@@ -1067,10 +1119,10 @@ app.get("/tmdb/details/:tmdbId/:type", async (req, res) => {
   }
 
   try {
-    const movieDetails = await tmdbGet(`/${type}/${tmdbId}`, {
+    const movieDetails = await tmdbCached(`/${type}/${tmdbId}`, {
       language: langOf(req.query.lang),
-      append_to_response: "credits,videos,images,watch/providers,external_ids",
-    });
+      append_to_response: "credits,videos,external_ids",
+    }, 30 * MINUTE, slimDetails);
 
     let reviews = [];
     try {
@@ -1115,7 +1167,7 @@ app.get("/tmdb/recommendations/:tmdbId/:type", async (req, res) => {
   }
 
   try {
-    res.json(await tmdbGet(`/${type}/${tmdbId}/recommendations`, { language: langOf(req.query.lang) }));
+    res.json(await tmdbCached(`/${type}/${tmdbId}/recommendations`, { language: langOf(req.query.lang) }, 60 * MINUTE));
   } catch (error) {
     tmdbError(res, "Erreur recommandations TMDB", error);
   }
@@ -1219,7 +1271,7 @@ app.get("/tmdb/tv/:tmdbId/season/:seasonNumber", async (req, res) => {
 
 app.get("/tmdb/genres", async (req, res) => {
   try {
-    const data = await tmdbGet("/genre/movie/list", { language: langOf(req.query.lang) });
+    const data = await tmdbCached("/genre/movie/list", { language: langOf(req.query.lang) }, 24 * 60 * MINUTE);
     res.json(data.genres);
   } catch (error) {
     tmdbError(res, "Erreur chargement genres", error);
@@ -1356,7 +1408,7 @@ app.get("/tmdb/providers/:type", async (req, res) => {
   if (!validType(req.params.type)) return res.status(400).json({ error: "Type invalide" });
   const region = REGION_REGEX.test(req.query.region) ? req.query.region : "FR";
   try {
-    const data = await tmdbGet(`/watch/providers/${req.params.type}`, { watch_region: region, language: langOf(req.query.lang) });
+    const data = await tmdbCached(`/watch/providers/${req.params.type}`, { watch_region: region, language: langOf(req.query.lang) }, 24 * 60 * MINUTE);
     res.json(
       (data.results || [])
         .sort((a, b) => (a.display_priority ?? 999) - (b.display_priority ?? 999))

@@ -7,11 +7,13 @@ import { useToast } from "../toastContext";
 import useBusy from "../hooks/useBusy";
 import useLibrary, { useEpisodeCounts } from "../hooks/useLibrary";
 import LibraryView from "../components/LibraryView";
-import { Button, StarRating } from "../components/ui";
+import { Button, StarRating, ShowMore } from "../components/ui";
+import useIncremental from "../hooks/useIncremental";
 import { errorMessage, posterUrl } from "../utils";
 
 function Seen() {
   const library = useLibrary("/seen");
+  const paging = useIncremental(library.entries);
   const episodeCounts = useEpisodeCounts();
   const toast = useToast();
   const { isBusy, run } = useBusy();
@@ -73,7 +75,7 @@ function Seen() {
       }}
     >
       <ul className="grid gap-4 lg:grid-cols-2">
-        {library.entries.map((entry) => {
+        {paging.visible.map((entry) => {
           const { movie } = entry;
           const draft = draftOf(movie.id);
           const watched = episodeCounts[movie.tmdb_id];
@@ -150,6 +152,7 @@ function Seen() {
           );
         })}
       </ul>
+      <ShowMore paging={paging} />
     </LibraryView>
   );
 }

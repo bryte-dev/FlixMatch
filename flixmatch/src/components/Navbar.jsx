@@ -1,5 +1,5 @@
-import { Link, NavLink, useNavigate } from "react-router-dom";
-import { useContext, useRef, useState } from "react";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import { useContext, useEffect, useRef, useState } from "react";
 import { saveSettings } from "../settings";
 import { unlockThemes } from "../theme";
 import { AuthContext } from "../AuthContext";
@@ -34,6 +34,16 @@ function Navbar() {
   const navigate = useNavigate();
   const toast = useToast();
   const taps = useRef({ count: 0, last: 0 });
+  const { pathname } = useLocation();
+
+  // Menu mobile : fermé à chaque changement de page et avec Échap
+  useEffect(() => setMenuOpen(false), [pathname]);
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const onKey = (e) => e.key === "Escape" && setMenuOpen(false);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
 
   // Easter egg mobile : 7 appuis rapides sur le logo débloquent les thèmes bonus
   const onLogoTap = () => {
@@ -138,7 +148,7 @@ function Navbar() {
       </div>
 
       {menuOpen && (
-        <div id="menu-mobile" className="border-t border-white/10 bg-ink-900/95 px-4 pb-4 pt-3 md:hidden">
+        <div id="menu-mobile" className="max-h-[calc(100dvh-4rem-env(safe-area-inset-top))] overflow-y-auto overscroll-contain border-t border-white/10 bg-ink-900/95 px-4 pb-4 pt-3 md:hidden">
           <SearchBar onNavigate={closeMenu} className="mb-3" />
           <nav className="flex flex-col gap-1" aria-label="Navigation mobile">
             {links.map(({ to, key: k, label, icon: Icon, end }) => (

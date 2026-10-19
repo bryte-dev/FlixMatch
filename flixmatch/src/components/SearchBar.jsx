@@ -116,6 +116,7 @@ function SearchBar({ onNavigate, className = "" }) {
                   <>
                     <img
                       src={img || (isPerson ? "/default-actor.png" : "/default-movie.png")}
+                      data-fallback={isPerson ? "/default-actor.png" : undefined}
                       alt=""
                       className={`h-12 w-8 shrink-0 bg-ink-700 object-cover ${isPerson ? "rounded-full" : "rounded"}`}
                     />

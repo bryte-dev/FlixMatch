@@ -6,7 +6,8 @@ import useBusy from "../hooks/useBusy";
 import useLibrary, { useEpisodeCounts } from "../hooks/useLibrary";
 import LibraryView from "../components/LibraryView";
 import MediaCard from "../components/MediaCard";
-import { Button, MediaGrid } from "../components/ui";
+import { Button, MediaGrid, ShowMore } from "../components/ui";
+import useIncremental from "../hooks/useIncremental";
 import { errorMessage, posterUrl } from "../utils";
 
 function Watchlist() {
@@ -16,6 +17,7 @@ function Watchlist() {
   const { isBusy, run } = useBusy();
 
   const entries = library.entries.filter((e) => e.status !== "SEEN" && e.status !== "JUNK");
+  const paging = useIncremental(entries);
 
   const toggleFavorite = (entry) =>
     run(`fav-${entry.movie.id}`, async () => {
@@ -65,7 +67,7 @@ function Watchlist() {
       }}
     >
       <MediaGrid>
-        {entries.map((entry) => {
+        {paging.visible.map((entry) => {
           const { movie } = entry;
           const watched = episodeCounts[movie.tmdb_id];
           return (
@@ -111,6 +113,7 @@ function Watchlist() {
           );
         })}
       </MediaGrid>
+      <ShowMore paging={paging} />
     </LibraryView>
   );
 }

@@ -39,15 +39,19 @@ const SearchResults = () => {
   const [loading, setLoading] = useState(Boolean(query));
   const [error, setError] = useState(false);
   const busy = useRef(false);
+  // Génération de recherche : une réponse d'une recherche précédente (onglet/filtres changés) est ignorée
+  const generation = useRef(0);
 
   const fetchPage = useCallback(
     async (nextPage) => {
       if (busy.current) return;
       busy.current = true;
+      const gen = generation.current;
       setLoading(true);
       setError(false);
       try {
         const res = await axios.get(`${API_URL}/tmdb/search`, { params: { query, type: tab, page: nextPage, lang: metaLang } });
+        if (gen !== generation.current) return;
         setTotalPages(res.data.total_pages || 1);
         setPage(nextPage);
         setResults((prev) => {
@@ -56,17 +60,21 @@ const SearchResults = () => {
           return [...base, ...res.data.results.filter((r) => !seen.has(resultKey(r)))];
         });
       } catch (err) {
+        if (gen !== generation.current) return;
         console.error("Erreur lors de la recherche :", err);
         setError(true);
       } finally {
-        busy.current = false;
-        setLoading(false);
+        if (gen === generation.current) {
+          busy.current = false;
+          setLoading(false);
+        }
       }
     },
     [query, tab, metaLang]
   );
 
   useEffect(() => {
+    generation.current += 1;
     setResults([]);
     setPage(0);
     busy.current = false;
