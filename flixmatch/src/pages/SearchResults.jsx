@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import axios from "axios";
+import { track } from "../lib/analytics";
 import { API_URL } from "../api";
 import { useSettings } from "../settings";
 import { resultKey } from "../lib/searchMerge";
@@ -52,6 +53,7 @@ const SearchResults = () => {
       try {
         const res = await axios.get(`${API_URL}/tmdb/search`, { params: { query, type: tab, page: nextPage, lang: metaLang } });
         if (gen !== generation.current) return;
+        if (nextPage === 1) track("search_performed", { query: String(query || "").toLowerCase().slice(0, 60), type: tab, results_count: res.data.total_results ?? res.data.results?.length ?? 0 });
         setTotalPages(res.data.total_pages || 1);
         setPage(nextPage);
         setResults((prev) => {

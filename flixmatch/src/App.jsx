@@ -18,6 +18,7 @@ import Profile from "./pages/Profile";
 import Activity from "./pages/Activity";
 import Join from "./pages/Join";
 import Navbar from "./components/Navbar";
+import ErrorBoundary from "./components/ErrorBoundary";
 import TabBar from "./components/TabBar";
 import { useKonami, useTheme } from "./theme";
 import { useToast } from "./toastContext";
@@ -59,6 +60,7 @@ const Shell = () => {
       <ScrollToTop />
       <Navbar />
       <main id="contenu" key={pathname} className="page-enter flex flex-1 flex-col">
+        <ErrorBoundary>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
@@ -80,6 +82,7 @@ const Shell = () => {
           <Route path="/:type/:tmdbId" element={<MovieDetail />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
+        </ErrorBoundary>
       </main>
       <footer className="border-t border-white/10 px-4 py-6 pb-24 text-center text-sm text-zinc-500 md:pb-6">
         <div className="mb-3 flex flex-wrap items-center justify-center gap-3">

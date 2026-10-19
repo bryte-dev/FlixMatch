@@ -5,6 +5,7 @@ import { ADAPTERS, adapterById, detectAdapter } from "../lib/import";
 import { commitAll, needsReview, resolveAll } from "../lib/import/runner";
 import { BottomSheet, Button, PageHeader, Tabs } from "../components/ui";
 import { posterUrl } from "../utils";
+import { track } from "../lib/analytics";
 
 const PAGE = 100;
 const MAX_FILE_BYTES = 200 * 1024 * 1024;
@@ -117,8 +118,10 @@ export default function Import() {
       if (result.items.length === 0) throw new Error(`Aucun film ni aucune série reconnus pour ${chosen.label}.`);
       setAdapter(chosen);
       setParsed(result);
+      track("import_file_parsed", { source: chosen.id, auto_detected: source === "auto", movies: result.stats.movies, series: result.stats.series, episodes: result.stats.episodes });
     } catch (err) {
       setError(err.message || "Fichier illisible");
+      track("import_parse_failed", { source });
     } finally {
       e.target.value = "";
     }
@@ -132,6 +135,7 @@ export default function Import() {
       const out = await resolveAll(parsed.items, { onProgress: setProgress, signal: abort.current.signal });
       setResolved(out);
       setSelected(new Set(out.filter((it) => it.match).map((it) => it.key)));
+      track("import_matched", { source: adapter?.id, total: out.length, matched: out.filter((it) => it.match).length, to_review: out.filter(needsReview).length, tmdb_errors: out.filter((it) => it.error).length });
       setTab("matched");
       setShown(PAGE);
       setPhase("preview");
@@ -150,8 +154,10 @@ export default function Import() {
     const chosen = resolved.filter((it) => it.match && selected.has(it.key));
     setProgress({ done: 0, total: chosen.length });
     try {
-      setReport(await commitAll(chosen, { onProgress: setProgress, signal: abort.current.signal }));
+      const result = await commitAll(chosen, { onProgress: setProgress, signal: abort.current.signal });
+      setReport(result);
       setPhase("done");
+      track("import_completed", { source: adapter?.id, selected: chosen.length, created: result.created, updated: result.updated, episodes_added: result.episodesAdded, episodes_skipped: result.episodesSkipped, reviews: result.reviews, failed: result.failed.length, aborted: result.aborted });
     } catch (err) {
       setError(err.message || "Import interrompu");
       setPhase("preview");

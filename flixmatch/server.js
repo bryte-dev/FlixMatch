@@ -88,7 +88,10 @@ app.use((req, res, next) => {
     res.setHeader("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
     // Le service worker récupère lui-même les affiches TMDB : connect-src doit l'autoriser
     const connectSrc = ["'self'", "https://image.tmdb.org"];
-    for (const raw of [process.env.NEXT_PUBLIC_POSTHOG_HOST, process.env.VITE_POSTHOG_HOST]) {
+    // PostHog : hôte configuré, ou hôte EU par défaut si seule la clé est fournie (cf. src/lib/analytics.js)
+    const posthogKey = process.env.VITE_POSTHOG_KEY || process.env.NEXT_PUBLIC_POSTHOG_KEY;
+    const posthogHost = process.env.VITE_POSTHOG_HOST || process.env.NEXT_PUBLIC_POSTHOG_HOST || (posthogKey ? "https://eu.i.posthog.com" : "");
+    for (const raw of [posthogHost]) {
       if (!raw) continue;
       try {
         connectSrc.push(new URL(raw).origin);

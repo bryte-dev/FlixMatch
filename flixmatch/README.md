@@ -878,13 +878,18 @@ PORT=3000
 NODE_ENV=development
 ```
 
-### Frontend variable
+### Frontend variables
 
 ```dotenv
 VITE_API_URL=http://localhost:3000
+# Optional product analytics (PostHog). Leave empty to disable.
+VITE_POSTHOG_KEY=phc_your_public_project_key
+VITE_POSTHOG_HOST=https://eu.i.posthog.com
 ```
 
-The frontend variable must be available to Vite at build time.
+Frontend variables must be available to Vite at build time: after adding or changing them on Render, trigger a new deploy. `NEXT_PUBLIC_POSTHOG_KEY` / `NEXT_PUBLIC_POSTHOG_HOST` are accepted as aliases. The server also reads the PostHog host at startup to allow it in the Content-Security-Policy.
+
+Analytics are privacy-first: no cookies or local storage (in-memory persistence), no session recording or autocapture, no external scripts, internal user ids only (never emails), cleaned URLs, Do Not Track respected, and an opt-out switch in Settings. Analytics failures are silent and never affect the app.
 
 ---
 

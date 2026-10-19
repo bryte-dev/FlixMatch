@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
+import { track } from "../lib/analytics";
 import { API_URL } from "../api";
 import AuthCard, { FormField } from "../components/AuthCard";
 import { Button } from "../components/ui";
@@ -29,6 +30,7 @@ const Register = () => {
     setLoading(true);
     try {
       await axios.post(`${API_URL}/register`, { email, password, username });
+      track("user_signed_up", { with_username: Boolean(username) });
       toast("Compte créé ! Tu peux te connecter.", "success");
       navigate("/login");
     } catch (err) {

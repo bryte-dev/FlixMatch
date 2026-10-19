@@ -2,6 +2,7 @@ import RatingBadges from "../components/RatingBadges";
 import { useCallback, useContext, useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import axios from "axios";
+import { track } from "../lib/analytics";
 import { FiBookmark, FiCheck, FiEye, FiRotateCcw, FiStar, FiTrash2 } from "react-icons/fi";
 import { API_URL } from "../api";
 import { AuthContext } from "../AuthContext";
@@ -60,6 +61,7 @@ function MovieDetail() {
     try {
       const res = await axios.get(`${API_URL}/tmdb/details/${tmdbId}/${type}`);
       setMovie(res.data);
+      track("media_viewed", { media_type: type, tmdb_id: Number(tmdbId) });
       setAverage(res.data.flixmatchRating != null ? Number(res.data.flixmatchRating) : null);
     } catch (err) {
       console.error("Erreur récupération des détails :", err);

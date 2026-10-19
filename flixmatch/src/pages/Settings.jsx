@@ -11,6 +11,7 @@ import { Button, PageHeader } from "../components/ui";
 import PrivacyDangerZone from "../components/PrivacyDangerZone";
 import { posterUrl } from "../utils";
 import { buildFlixMatchExport, buildLetterboxdCsv, buildTraktCsv } from "../lib/export";
+import { analyticsConfigured, isOptedOut, setAnalyticsOptOut, track } from "../lib/analytics";
 
 const EXPORTS = {
   flixmatch: { label: "Sauvegarde complète FlixMatch (JSON)", file: "flixmatch-export.json", type: "application/json", build: (data, settings) => JSON.stringify(buildFlixMatchExport(data, settings), null, 2) },
@@ -57,6 +58,7 @@ export default function Settings() {
   const [providers, setProviders] = useState([]);
   const [unlocked, setUnlocked] = useState(isUnlocked);
   const [exporting, setExporting] = useState(null);
+  const [analyticsOff, setAnalyticsOff] = useState(isOptedOut);
 
   useEffect(() => {
     const onUnlock = () => setUnlocked(true);
@@ -87,6 +89,7 @@ export default function Settings() {
     try {
       const { data } = await axios.get(`${API_URL}/account/export`);
       download(spec.file, spec.build(data, settings), spec.type);
+      track("data_exported", { format });
     } catch {
       toast("L'export a échoué.", "error");
     } finally {
@@ -164,6 +167,26 @@ export default function Settings() {
         )}
         <p className="text-xs text-zinc-500">Données « Où regarder » fournies par JustWatch via TMDB.</p>
       </Section>
+
+      {analyticsConfigured() && (
+        <Section title="Statistiques d'usage">
+          <label className="flex items-start gap-3 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-5 w-5 shrink-0 accent-brand-500"
+              checked={!analyticsOff}
+              onChange={(e) => {
+                setAnalyticsOptOut(!e.target.checked);
+                setAnalyticsOff(!e.target.checked);
+              }}
+            />
+            <span>
+              Aider à améliorer FlixMatch avec des statistiques d&apos;usage anonymisées (pages vues, fonctionnalités utilisées, erreurs).
+              Ni email, ni cookie publicitaire, ni enregistrement d&apos;écran.
+            </span>
+          </label>
+        </Section>
+      )}
 
       {user && (
         <>

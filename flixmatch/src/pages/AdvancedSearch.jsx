@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
+import { track } from "../lib/analytics";
 import { API_URL } from "../api";
 import { useSettings } from "../settings";
 import MediaCard from "../components/MediaCard";
@@ -66,6 +67,14 @@ function AdvancedSearch() {
           },
         });
         if (gen !== generation.current) return;
+        if (nextPage === 1) {
+          track("advanced_search_performed", {
+            type,
+            filters: Object.entries(rest).filter(([, v]) => v !== "" && v !== undefined && v !== null && v !== false).map(([k]) => k),
+            only_my_providers: Boolean(onlyMine),
+            results_count: res.data.total_results ?? 0,
+          });
+        }
         setTotalPages(res.data.total_pages || 1);
         setPage(nextPage);
         setResults((prev) => {

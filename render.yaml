@@ -18,3 +18,8 @@ services:
         generateValue: true
       - key: OMDB_API_KEY
         sync: false
+      # PostHog (facultatif) : lus au build par Vite et au démarrage par le serveur (CSP)
+      - key: VITE_POSTHOG_KEY
+        sync: false
+      - key: VITE_POSTHOG_HOST
+        sync: false
