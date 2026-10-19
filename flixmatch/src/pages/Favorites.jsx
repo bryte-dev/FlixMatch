@@ -6,11 +6,13 @@ import useBusy from "../hooks/useBusy";
 import useLibrary from "../hooks/useLibrary";
 import LibraryView from "../components/LibraryView";
 import MediaCard from "../components/MediaCard";
-import { Button, MediaGrid } from "../components/ui";
+import { Button, MediaGrid, ShowMore } from "../components/ui";
+import useIncremental from "../hooks/useIncremental";
 import { errorMessage, posterUrl } from "../utils";
 
 function Favorites() {
   const library = useLibrary("/favorites");
+  const paging = useIncremental(library.entries);
   const toast = useToast();
   const { isBusy, run } = useBusy();
 
@@ -38,7 +40,7 @@ function Favorites() {
       }}
     >
       <MediaGrid>
-        {library.entries.map(({ movie }) => (
+        {paging.visible.map(({ movie }) => (
           <MediaCard
             key={movie.id}
             to={`/${movie.media_type}/${movie.tmdb_id}`}
@@ -59,6 +61,7 @@ function Favorites() {
           </MediaCard>
         ))}
       </MediaGrid>
+      <ShowMore paging={paging} />
     </LibraryView>
   );
 }

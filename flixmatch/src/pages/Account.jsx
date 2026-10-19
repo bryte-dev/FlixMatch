@@ -5,9 +5,9 @@ import { Link, useNavigate } from "react-router-dom";
 import { FiLogOut } from "react-icons/fi";
 import AuthCard, { FormField } from "../components/AuthCard";
 import Avatar, { PRESETS, imageToAvatar } from "../components/Avatar";
-import { BottomSheet, Button } from "../components/ui";
+import { Button } from "../components/ui";
+import PrivacyDangerZone from "../components/PrivacyDangerZone";
 import { useToast } from "../toastContext";
-import { errorMessage } from "../utils";
 
 const LEVELS = { public: "Public", friends: "Amis (abonnement mutuel)", private: "Privé" };
 const SECTIONS = [["privacyProfile", "Profil"], ["privacyLibrary", "Bibliothèque et stats"], ["privacyActivity", "Activité"]];
@@ -19,9 +19,6 @@ const Account = () => {
   const [username, setUsername] = useState(user?.username || "");
   const [saving, setSaving] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [password, setPassword] = useState("");
-  const [deleting, setDeleting] = useState(false);
   const [invite, setInvite] = useState("");
 
   const save = async (patch, message = "Profil mis à jour") => {
@@ -72,19 +69,6 @@ const Account = () => {
     }
   };
 
-  const deleteAccount = async (e) => {
-    e.preventDefault();
-    setDeleting(true);
-    try {
-      await axios.delete("/account", { data: { password } });
-      toast("Compte supprimé.", "success");
-      window.location.assign("/");
-    } catch (err) {
-      toast(errorMessage(err, "Suppression impossible"), "error");
-      setDeleting(false);
-    }
-  };
-
   return (
     <AuthCard title="Mon compte" subtitle="Gère ton profil, ton avatar et ta confidentialité.">
       <div className="mb-5 flex flex-col items-center gap-3">
@@ -130,15 +114,9 @@ const Account = () => {
       <Button className="mt-6 w-full" pending={loggingOut} pendingLabel="Déconnexion…" onClick={handleLogout}>
         <FiLogOut aria-hidden="true" /> Se déconnecter
       </Button>
-      <Button variant="danger" className="mt-3 w-full" onClick={() => setDeleteOpen(true)}>Supprimer mon compte</Button>
 
-      <BottomSheet open={deleteOpen} onClose={() => setDeleteOpen(false)} title="Supprimer mon compte">
-        <form onSubmit={deleteAccount} className="space-y-3">
-          <p className="text-sm text-zinc-300">Cette action est définitive : ta bibliothèque, tes épisodes vus et tes avis seront supprimés. Confirme avec ton mot de passe.</p>
-          <FormField id="del-password" label="Mot de passe" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-          <Button type="submit" variant="danger" className="w-full" pending={deleting} pendingLabel="Suppression…" disabled={!password}>Supprimer définitivement</Button>
-        </form>
-      </BottomSheet>
+      <h2 className="mb-2 mt-8 font-bold">Données et confidentialité</h2>
+      <PrivacyDangerZone />
     </AuthCard>
   );
 };

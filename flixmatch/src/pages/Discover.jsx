@@ -6,6 +6,7 @@ import { API_URL } from "../api";
 import { AuthContext } from "../AuthContext";
 import { useToast } from "../toastContext";
 import { useSettings } from "../settings";
+import { useT } from "../i18n";
 import RatingBadges from "../components/RatingBadges";
 import SwipeCard from "../components/SwipeCard";
 import { BottomSheet, Button, EmptyState, ErrorState, Spinner } from "../components/ui";
@@ -55,6 +56,7 @@ function WhereToWatch({ item, region, myProviders }) {
 export default function Discover() {
   const { user } = useContext(AuthContext);
   const toast = useToast();
+  const t = useT();
   const navigate = useNavigate();
   const settings = useSettings();
   const cardRef = useRef(null);

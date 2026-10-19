@@ -245,4 +245,8 @@
   to { opacity: 1; transform: none; }
 }
 .sheet { animation: sheet-up 0.25s ease-out; }
+/* Image de repli (affiche TMDB introuvable) : centrée, sans déformation */
+img.img-fallback { object-fit: contain; padding: 12%; opacity: 0.6; }
+/* Titres très longs (mots composés, URL) : coupure plutôt que débordement horizontal */
+.break-anywhere { overflow-wrap: anywhere; }
 .page-enter { animation: page-in 0.2s ease-out; }

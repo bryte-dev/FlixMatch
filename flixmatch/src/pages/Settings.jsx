@@ -8,7 +8,28 @@ import { SWIPE_ACTIONS, saveSettings, useSettings } from "../settings";
 import { LANGUAGES, useT } from "../i18n";
 import { THEMES, isUnlocked } from "../theme";
 import { Button, PageHeader } from "../components/ui";
+import PrivacyDangerZone from "../components/PrivacyDangerZone";
 import { posterUrl } from "../utils";
+import { buildFlixMatchExport, buildLetterboxdCsv, buildTraktCsv } from "../lib/export";
+import { analyticsConfigured, isOptedOut, setAnalyticsOptOut, track } from "../lib/analytics";
+
+const EXPORTS = {
+  flixmatch: { label: "Sauvegarde complète FlixMatch (JSON)", file: "flixmatch-export.json", type: "application/json", build: (data, settings) => JSON.stringify(buildFlixMatchExport(data, settings), null, 2) },
+  letterboxd: { label: "Films vus pour Letterboxd (CSV)", file: "flixmatch-letterboxd-watched.csv", type: "text/csv", build: (data) => buildLetterboxdCsv(data, "watched") },
+  letterboxdWatchlist: { label: "Watchlist films pour Letterboxd (CSV)", file: "flixmatch-letterboxd-watchlist.csv", type: "text/csv", build: (data) => buildLetterboxdCsv(data, "watchlist") },
+  trakt: { label: "Films, séries et épisodes pour Trakt (CSV)", file: "flixmatch-trakt.csv", type: "text/csv", build: (data) => buildTraktCsv(data) },
+};
+
+const download = (name, content, type) => {
+  const url = URL.createObjectURL(new Blob([content], { type: `${type};charset=utf-8` }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
 
 const REGIONS = {
   FR: "France", BE: "Belgique", CH: "Suisse", CA: "Canada", US: "États-Unis", GB: "Royaume-Uni", DE: "Allemagne",
@@ -36,7 +57,8 @@ export default function Settings() {
   const t = useT();
   const [providers, setProviders] = useState([]);
   const [unlocked, setUnlocked] = useState(isUnlocked);
-  const [exporting, setExporting] = useState(false);
+  const [exporting, setExporting] = useState(null);
+  const [analyticsOff, setAnalyticsOff] = useState(isOptedOut);
 
   useEffect(() => {
     const onUnlock = () => setUnlocked(true);
@@ -60,21 +82,18 @@ export default function Settings() {
       providers: settings.providers.includes(id) ? settings.providers.filter((p) => p !== id) : [...settings.providers, id],
     });
 
-  const exportData = async () => {
-    setExporting(true);
+  const exportData = async (format) => {
+    if (exporting) return;
+    const spec = EXPORTS[format];
+    setExporting(format);
     try {
-      const [watchlist, episodes] = await Promise.all([axios.get(`${API_URL}/watchlist`), axios.get(`${API_URL}/episodes`)]);
-      const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), watchlist: watchlist.data, episodes: episodes.data, settings }, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "flixmatch-export.json";
-      a.click();
-      URL.revokeObjectURL(url);
+      const { data } = await axios.get(`${API_URL}/account/export`);
+      download(spec.file, spec.build(data, settings), spec.type);
+      track("data_exported", { format });
     } catch {
       toast("L'export a échoué.", "error");
     } finally {
-      setExporting(false);
+      setExporting(null);
     }
   };
 
@@ -149,11 +168,44 @@ export default function Settings() {
         <p className="text-xs text-zinc-500">Données « Où regarder » fournies par JustWatch via TMDB.</p>
       </Section>
 
-      {user && (
-        <Section title="Mes données">
-          <Button onClick={exportData} pending={exporting} pendingLabel="Export…">Exporter mes données (JSON)</Button>
-          <Link to="/import" className="btn btn-secondary">Importer depuis TV Time</Link>
+      {analyticsConfigured() && (
+        <Section title="Statistiques d'usage">
+          <label className="flex items-start gap-3 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-5 w-5 shrink-0 accent-brand-500"
+              checked={!analyticsOff}
+              onChange={(e) => {
+                setAnalyticsOptOut(!e.target.checked);
+                setAnalyticsOff(!e.target.checked);
+              }}
+            />
+            <span>
+              Aider à améliorer FlixMatch avec des statistiques d&apos;usage anonymisées (pages vues, fonctionnalités utilisées, erreurs).
+              Ni email, ni cookie publicitaire, ni enregistrement d&apos;écran.
+            </span>
+          </label>
         </Section>
+      )}
+
+      {user && (
+        <>
+          <Section title="Mes données">
+            <p className="text-sm text-zinc-400">Exporte toute ta bibliothèque : watchlist, vus, favoris, notes, avis et épisodes.</p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              {Object.entries(EXPORTS).map(([id, spec]) => (
+                <Button key={id} onClick={() => exportData(id)} pending={exporting === id} pendingLabel="Export…" disabled={Boolean(exporting)}>
+                  {spec.label}
+                </Button>
+              ))}
+            </div>
+            <Link to="/import" className="btn btn-secondary">Importer (TV Time, Letterboxd, Trakt, FlixMatch)</Link>
+            <Link to="/account" className="btn btn-secondary">Profil, confidentialité et compte</Link>
+          </Section>
+          <Section title="Réinitialiser ou supprimer">
+            <PrivacyDangerZone />
+          </Section>
+        </>
       )}
     </div>
   );

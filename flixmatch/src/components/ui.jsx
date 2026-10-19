@@ -144,17 +144,27 @@ export function StarRating({ value = 0, onChange, pending = false, label = "Note
 // Bottom sheet sur mobile, modale centrée sur desktop. Fermeture : Échap, clic sur le fond, bouton.
 export function BottomSheet({ open, onClose, title, children }) {
   const ref = useRef(null);
+  // onClose est souvent une fonction recréée à chaque rendu : on la lit via une ref pour que
+  // l'effet ne se relance pas à chaque frappe (sinon le champ en cours de saisie perd le focus)
+  const closeRef = useRef(onClose);
+  useEffect(() => {
+    closeRef.current = onClose;
+  });
   useEffect(() => {
     if (!open) return undefined;
     const previous = document.activeElement;
     ref.current?.focus();
-    const onKey = (e) => e.key === "Escape" && onClose?.();
+    // Empêche la page de défiler derrière la feuille (iOS / Android)
+    const { overflow } = document.body.style;
+    document.body.style.overflow = "hidden";
+    const onKey = (e) => e.key === "Escape" && closeRef.current?.();
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = overflow;
       previous?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/60 sm:items-center" onClick={onClose}>
@@ -165,7 +175,7 @@ export function BottomSheet({ open, onClose, title, children }) {
         aria-modal="true"
         aria-label={title}
         onClick={(e) => e.stopPropagation()}
-        className="sheet surface safe-bottom max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-b-none p-5 outline-none sm:rounded-2xl"
+        className="sheet surface safe-bottom max-h-[85dvh] w-full max-w-md overflow-y-auto overscroll-contain rounded-b-none p-5 outline-none sm:rounded-2xl"
       >
         <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-white/20 sm:hidden" aria-hidden="true" />
         <h2 className="mb-3 text-lg font-bold">{title}</h2>
@@ -176,6 +186,17 @@ export function BottomSheet({ open, onClose, title, children }) {
 }
 
 // Déclenche `onVisible` quand l'élément entre dans la vue (scroll infini)
+// « Afficher plus » : chargement automatique au défilement + bouton accessible au clavier
+export function ShowMore({ paging }) {
+  if (!paging.hasMore) return null;
+  return (
+    <div className="mt-6 flex justify-center">
+      <InfiniteSentinel key={paging.count} onVisible={paging.more} />
+      <Button onClick={paging.more}>Afficher plus ({paging.remaining})</Button>
+    </div>
+  );
+}
+
 export function InfiniteSentinel({ onVisible, disabled = false }) {
   const ref = useRef(null);
   const callback = useRef(onVisible);

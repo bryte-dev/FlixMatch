@@ -1,100 +1,117 @@
-// Adaptateur TV Time (export RGPD). Le format varie : on détecte les colonnes par leurs noms probables.
-import { parseCsv } from "./csv.js";
+// Adaptateur TV Time (export RGPD, ZIP de CSV/JSON). Le format varie selon les années :
+// les colonnes sont reconnues par leurs noms probables.
+//
+// Correctifs de correspondance :
+// - une ligne n'est classée « film » que sur un indice explicite (entity_type, colonne movie_*,
+//   nom de fichier) ; une colonne générique « name »/« title » ne suffit plus (les séries
+//   finissaient en films) ;
+// - les ids TV Time des séries sont des ids TVDB ; l'id interne d'un film TV Time n'est jamais
+//   pris pour un id TMDB (seule une colonne tmdb_* explicite l'est).
+import { ImportCollector, baseName, pick, toImdb, toInt, toKind, toYear } from "./model.js";
+import { readRows } from "./rows.js";
 
-const pick = (row, names) => {
-  for (const n of names) if (row[n] !== undefined && row[n] !== "") return row[n];
-  return "";
+const SERIES_NAME = ["series_name", "show_name", "tv_show_name", "show_title", "series_title", "tv_show", "show", "show_name_en", "tv_show_title"];
+const MOVIE_NAME = ["movie_name", "movie_title", "film_name", "film_title", "movie"];
+const GENERIC_NAME = ["name", "title"];
+const SERIES_TVDB = ["tvdb_id", "tvdb_series_id", "series_id", "show_id", "tv_show_id", "show_tvdb_id"];
+const IMDB = ["imdb_id", "imdb", "series_imdb_id", "show_imdb_id", "movie_imdb_id"];
+const TMDB_TV = ["tmdb_id", "series_tmdb_id", "show_tmdb_id", "tv_show_tmdb_id"];
+const TMDB_MOVIE = ["tmdb_id", "movie_tmdb_id"];
+const SEASON = ["season_number", "season", "season_no", "episode_season_number"];
+const EPISODE = ["episode_number", "episode", "episode_no", "number"];
+const DATE = ["watched_at", "seen_at", "created_at", "updated_at", "date"];
+const YEAR = ["year", "release_date", "release_year", "first_aired", "air_date"];
+const ENTITY = ["entity_type", "object_type", "media_type", "type", "kind"];
+
+const hasAny = (row, names) => names.some((n) => row[n] !== undefined && row[n] !== "");
+
+// Indice de type tiré du nom de fichier (tracking-prod-records.csv ne dit rien, followed_tv_show.csv oui)
+const fileKind = (base) => {
+  if (/(tv_?show|series|episode|show)/.test(base)) return "tv";
+  if (/(movie|film)/.test(base)) return "movie";
+  return null;
 };
-const num = (v) => (/^\d+$/.test(String(v)) ? Number(v) : null);
-const year = (v) => (/^(\d{4})/.test(String(v)) ? Number(String(v).slice(0, 4)) : null);
 
-const SERIES_NAME = ["series_name", "show_name", "tv_show_name", "show_title", "series_title", "tv_show", "show", "name"];
-const MOVIE_NAME = ["movie_name", "movie_title", "film_name", "title"];
-const SERIES_ID = ["series_id", "show_id", "tv_show_id", "tvdb_id", "tvdb_series_id"];
-const MOVIE_ID = ["movie_id", "tmdb_id", "imdb_id", "film_id"];
-const DATE = ["created_at", "watched_at", "updated_at", "date", "seen_at"];
+const statusHint = (row, base) => {
+  const v = `${pick(row, ["type", "action", "status", "list"])} ${base}`.toLowerCase();
+  if (/(to_?watch|towatch|watch_?list|want|plan|follow)/.test(v) && !/(seen|watched|history)/.test(v)) return "WATCHLIST";
+  if (/(watch|seen|history|record)/.test(v)) return "SEEN";
+  return null;
+};
 
-// Entrée : [{ name, text }] (fichiers texte du ZIP). Sortie : { series, movies, stats }
+export function classifyRow(row, base) {
+  const entity = toKind(pick(row, ENTITY));
+  if (entity) return entity;
+  if (hasAny(row, SERIES_NAME) || (hasAny(row, SEASON) && hasAny(row, EPISODE))) return "tv";
+  if (hasAny(row, MOVIE_NAME)) return "movie";
+  return fileKind(base);
+}
+
 export function parseTvTime(files) {
-  const series = new Map();
-  const movies = new Map();
-  const favorites = new Set();
-
-  const serie = (name, row) => {
-    const key = name.toLowerCase();
-    if (!series.has(key)) series.set(key, { name, tvdbId: null, tmdbId: null, episodes: new Map(), favorite: false });
-    const s = series.get(key);
-    const id = pick(row, SERIES_ID);
-    if (id && num(id)) s.tvdbId = s.tvdbId || Number(id);
-    return s;
-  };
+  const collector = new ImportCollector();
+  let skipped = 0;
 
   for (const file of files) {
-    const lower = file.name.toLowerCase();
-    const base = lower.split("/").pop();
-    let rows = [];
-    if (lower.endsWith(".csv")) rows = parseCsv(file.text);
-    else if (lower.endsWith(".json")) {
-      try {
-        const data = JSON.parse(file.text);
-        rows = (Array.isArray(data) ? data : Object.values(data).find(Array.isArray) || []).map((r) =>
-          Object.fromEntries(Object.entries(r || {}).map(([k, v]) => [k.toLowerCase(), v == null ? "" : String(v)]))
-        );
-      } catch {
-        continue;
-      }
-    } else continue;
-
+    const base = baseName(file.name);
+    const { rows } = readRows(file);
     const isFavoriteFile = /favou?rite/.test(base);
+
     for (const row of rows) {
-      const entity = pick(row, ["entity_type", "type", "object_type"]).toLowerCase();
-      const seasonN = num(pick(row, ["season_number", "season", "season_no"]));
-      const episodeN = num(pick(row, ["episode_number", "episode", "episode_no"]));
-      const sName = pick(row, SERIES_NAME);
-      const mName = pick(row, MOVIE_NAME);
+      const kind = classifyRow(row, base);
       const date = pick(row, DATE);
 
-      if (entity.includes("movie") || (!sName && mName && /movie|film/.test(base)) || (mName && !sName && entity === "")) {
-        if (!mName || /(episode|series|show)/.test(entity)) continue;
-        const key = mName.toLowerCase();
-        const m = movies.get(key) || { name: mName, year: year(pick(row, ["release_date", "year"])), imdbId: null, tmdbId: null, watchedAt: date, favorite: false };
-        const id = pick(row, MOVIE_ID);
-        if (/^tt\d+$/.test(id)) m.imdbId = id;
-        else if (num(id) && /tmdb/.test(Object.keys(row).join())) m.tmdbId = Number(id);
-        if (isFavoriteFile) m.favorite = true;
-        movies.set(key, m);
+      if (kind === "movie") {
+        const title = pick(row, MOVIE_NAME) || pick(row, GENERIC_NAME);
+        if (!title) continue;
+        collector.add({
+          kind: "movie",
+          title,
+          year: toYear(pick(row, YEAR)),
+          ids: { imdb: toImdb(pick(row, IMDB)), tmdb: toInt(pick(row, TMDB_MOVIE)) },
+          status: isFavoriteFile ? null : statusHint(row, base) || "SEEN",
+          favorite: isFavoriteFile,
+          watchedAt: date,
+        });
         continue;
       }
-      if (!sName) continue;
-      const s = serie(sName, row);
-      if (isFavoriteFile) s.favorite = true;
-      if (seasonN !== null && episodeN !== null && episodeN > 0) {
-        const k = `${seasonN}-${episodeN}`;
-        if (!s.episodes.has(k)) s.episodes.set(k, { seasonNumber: seasonN, episodeNumber: episodeN, watchedAt: date });
+
+      if (kind === "tv") {
+        const title = pick(row, SERIES_NAME) || pick(row, GENERIC_NAME);
+        const tvdb = toInt(pick(row, SERIES_TVDB));
+        if (!title && !tvdb) continue;
+        const season = toInt(pick(row, SEASON));
+        const episode = toInt(pick(row, EPISODE));
+        collector.add({
+          kind: "tv",
+          title,
+          year: toYear(pick(row, ["series_year", "show_year", "first_aired"])),
+          ids: { tvdb, imdb: toImdb(pick(row, IMDB)), tmdb: toInt(pick(row, TMDB_TV)) },
+          favorite: isFavoriteFile,
+          watchedAt: date,
+          episodes: season !== null && episode ? [{ seasonNumber: season, episodeNumber: episode, watchedAt: date }] : [],
+        });
+        continue;
       }
-      if (isFavoriteFile) favorites.add(s.name);
+
+      // Type inconnu : gardé seulement s'il y a un titre, la correspondance TMDB tranchera
+      const title = pick(row, GENERIC_NAME);
+      if (title) collector.add({ kind: null, title, year: toYear(pick(row, YEAR)), ids: { imdb: toImdb(pick(row, IMDB)) }, favorite: isFavoriteFile, watchedAt: date });
+      else skipped++;
     }
   }
 
-  const seriesList = [...series.values()].map((s) => ({ ...s, episodes: [...s.episodes.values()] }));
-  const moviesList = [...movies.values()];
-  return {
-    series: seriesList,
-    movies: moviesList,
-    stats: {
-      series: seriesList.length,
-      episodes: seriesList.reduce((n, s) => n + s.episodes.length, 0),
-      movies: moviesList.length,
-      favorites: favorites.size + moviesList.filter((m) => m.favorite).length,
-    },
-  };
+  const out = collector.result();
+  return { ...out, stats: { ...out.stats, skipped } };
 }
 
 export const tvTimeAdapter = {
   id: "tvtime",
   label: "TV Time",
-  accepts: "application/zip,.zip",
-  async parse(files) {
-    return parseTvTime(files);
+  hint: "Export RGPD TV Time (ZIP) : Paramètres → Confidentialité → Télécharger mes données.",
+  detect(files) {
+    const names = files.map((f) => baseName(f.name)).join(" ");
+    if (/(tracking-prod|followed_tv_show|seen_episode|user_tv_show|tv_show)/.test(names)) return 0.9;
+    return files.some((f) => /(series_name|show_name|tv_show_name)/i.test(f.text.slice(0, 2000))) ? 0.6 : 0.1;
   },
+  parse: parseTvTime,
 };

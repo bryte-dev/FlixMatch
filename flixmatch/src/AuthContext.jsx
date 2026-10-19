@@ -1,6 +1,7 @@
 import { createContext, useState, useEffect } from "react";
 import axios from "axios";
 import { API_URL } from "./api";
+import { identifyUser, resetAnalytics, track } from "./lib/analytics";
 
 axios.defaults.baseURL = API_URL;
 axios.defaults.withCredentials = true; // Envoie le cookie d'authentification à chaque requête
@@ -16,6 +17,7 @@ export const AuthProvider = ({ children }) => {
       try {
         const res = await axios.get("/me");
         setUser(res.data);
+        identifyUser(res.data);
       } catch {
         setUser(null);
       } finally {
@@ -30,10 +32,14 @@ export const AuthProvider = ({ children }) => {
     await axios.post("/login", { email, password });
     const res = await axios.get("/me");
     setUser(res.data);
+    identifyUser(res.data);
+    track("user_logged_in");
   };
 
   const logout = async () => {
     await axios.post("/logout");
+    track("user_logged_out");
+    resetAnalytics();
     setUser(null);
   };
 

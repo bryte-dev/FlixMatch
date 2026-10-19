@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
+import { track } from "../lib/analytics";
 import { API_URL } from "../api";
 import { useSettings } from "../settings";
 import MediaCard from "../components/MediaCard";
@@ -30,6 +31,8 @@ function AdvancedSearch() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const busy = useRef(false);
+  // Génération de recherche : une réponse d'une recherche précédente (onglet/filtres changés) est ignorée
+  const generation = useRef(0);
 
   useEffect(() => {
     axios
@@ -48,6 +51,7 @@ function AdvancedSearch() {
     async (nextPage) => {
       if (busy.current) return;
       busy.current = true;
+      const gen = generation.current;
       setLoading(true);
       setError(false);
       const { onlyMine, ...rest } = debounced;
@@ -62,6 +66,15 @@ function AdvancedSearch() {
             providers: onlyMine && settings.providers.length ? settings.providers.join("|") : undefined,
           },
         });
+        if (gen !== generation.current) return;
+        if (nextPage === 1) {
+          track("advanced_search_performed", {
+            type,
+            filters: Object.entries(rest).filter(([, v]) => v !== "" && v !== undefined && v !== null && v !== false).map(([k]) => k),
+            only_my_providers: Boolean(onlyMine),
+            results_count: res.data.total_results ?? 0,
+          });
+        }
         setTotalPages(res.data.total_pages || 1);
         setPage(nextPage);
         setResults((prev) => {
@@ -70,18 +83,22 @@ function AdvancedSearch() {
           return [...base, ...(res.data.results || []).filter((r) => !seen.has(r.id))];
         });
       } catch (err) {
+        if (gen !== generation.current) return;
         console.error("Erreur recherche avancée :", err);
         if (nextPage === 1) setResults([]);
         setError(true);
       } finally {
-        busy.current = false;
-        setLoading(false);
+        if (gen === generation.current) {
+          busy.current = false;
+          setLoading(false);
+        }
       }
     },
     [debounced, type, settings.metaLang, settings.region, settings.providers]
   );
 
   useEffect(() => {
+    generation.current += 1;
     busy.current = false;
     setPage(0);
     fetchPage(1);

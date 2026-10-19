@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import axios from "axios";
+import { track } from "../lib/analytics";
 import { API_URL } from "../api";
 import { useSettings } from "../settings";
 import { resultKey } from "../lib/searchMerge";
@@ -39,15 +40,20 @@ const SearchResults = () => {
   const [loading, setLoading] = useState(Boolean(query));
   const [error, setError] = useState(false);
   const busy = useRef(false);
+  // Génération de recherche : une réponse d'une recherche précédente (onglet/filtres changés) est ignorée
+  const generation = useRef(0);
 
   const fetchPage = useCallback(
     async (nextPage) => {
       if (busy.current) return;
       busy.current = true;
+      const gen = generation.current;
       setLoading(true);
       setError(false);
       try {
         const res = await axios.get(`${API_URL}/tmdb/search`, { params: { query, type: tab, page: nextPage, lang: metaLang } });
+        if (gen !== generation.current) return;
+        if (nextPage === 1) track("search_performed", { query: String(query || "").toLowerCase().slice(0, 60), type: tab, results_count: res.data.total_results ?? res.data.results?.length ?? 0 });
         setTotalPages(res.data.total_pages || 1);
         setPage(nextPage);
         setResults((prev) => {
@@ -56,17 +62,21 @@ const SearchResults = () => {
           return [...base, ...res.data.results.filter((r) => !seen.has(resultKey(r)))];
         });
       } catch (err) {
+        if (gen !== generation.current) return;
         console.error("Erreur lors de la recherche :", err);
         setError(true);
       } finally {
-        busy.current = false;
-        setLoading(false);
+        if (gen === generation.current) {
+          busy.current = false;
+          setLoading(false);
+        }
       }
     },
     [query, tab, metaLang]
   );
 
   useEffect(() => {
+    generation.current += 1;
     setResults([]);
     setPage(0);
     busy.current = false;
