@@ -12,6 +12,7 @@ import { fileURLToPath } from "url";
 import { isAired } from "./src/lib/episodes.js";
 import { getImdbRating } from "./services/omdb.js";
 import { mergeSearchResults } from "./src/lib/searchMerge.js";
+import { MAX_COMMIT_BATCH, MAX_RESOLVE_BATCH, createImporter, sanitizeCommitItem, sanitizeResolveItem } from "./services/importer.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -62,7 +63,10 @@ if (process.env.CORS_ORIGIN) {
   );
 }
 
-app.use(express.json({ limit: "100kb" }));
+// Corps JSON limités à 100 ko, sauf les lots d'import (épisodes nombreux)
+const jsonSmall = express.json({ limit: "100kb" });
+const jsonImport = express.json({ limit: "2mb" });
+app.use((req, res, next) => (req.path.startsWith("/import/") ? jsonImport : jsonSmall)(req, res, next));
 app.use(cookieParser());
 
 const cookieOptions = {
@@ -252,6 +256,8 @@ const authRateLimit = createRateLimit(15 * 60 * 1000, 30, "Trop de tentatives, r
 const actionRateLimit = createRateLimit(60 * 1000, 120, "Trop de requêtes, ralentis un peu");
 const searchRateLimit = createRateLimit(60 * 1000, 60, "Trop de recherches, ralentis un peu");
 const reviewRateLimit = createRateLimit(60 * 1000, 30, "Trop d'avis, ralentis un peu");
+const importRateLimit = createRateLimit(60 * 1000, 90, "Import trop rapide, patiente quelques secondes");
+const exportRateLimit = createRateLimit(60 * 1000, 10, "Trop d'exports, réessaie dans une minute");
 
 
 // ---------- Sécurité : limitation globale, protection CSRF ----------
@@ -489,6 +495,50 @@ app.delete("/account", authRateLimit, authMiddleware, async (req, res) => {
 });
 
 // ---------- Social léger : profils, followers, invitations, fil d'activité ----------
+
+// ---------- Import / export de bibliothèque ----------
+
+const importer = createImporter({ prisma, tmdbGet, getSeason, isAired });
+
+// Correspondance TMDB d'un lot d'éléments importés (aucune écriture)
+app.post("/import/resolve", importRateLimit, authMiddleware, async (req, res) => {
+  const raw = req.body?.items;
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_RESOLVE_BATCH) {
+    return res.status(400).json({ error: `items : 1 à ${MAX_RESOLVE_BATCH} éléments` });
+  }
+  const items = raw.map(sanitizeResolveItem);
+  if (items.some((i) => !i)) return res.status(400).json({ error: "Élément d'import invalide" });
+  try {
+    res.json({ results: await importer.resolveItems(items) });
+  } catch (error) {
+    serverError(res, "Erreur correspondance import", error);
+  }
+});
+
+// Écriture d'un lot d'éléments confirmés par l'utilisateur (idempotent)
+app.post("/import/commit", importRateLimit, authMiddleware, async (req, res) => {
+  const raw = req.body?.items;
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_COMMIT_BATCH) {
+    return res.status(400).json({ error: `items : 1 à ${MAX_COMMIT_BATCH} éléments` });
+  }
+  const items = raw.map(sanitizeCommitItem);
+  if (items.some((i) => !i)) return res.status(400).json({ error: "Élément d'import invalide" });
+  try {
+    res.json({ results: await importer.commitItems(req.userId, items) });
+  } catch (error) {
+    serverError(res, "Erreur import", error);
+  }
+});
+
+// Export complet des données de l'utilisateur (RGPD)
+app.get("/account/export", exportRateLimit, authMiddleware, async (req, res) => {
+  try {
+    res.setHeader("Cache-Control", "no-store");
+    res.json(await importer.exportLibrary(req.userId));
+  } catch (error) {
+    serverError(res, "Erreur export", error);
+  }
+});
 
 const optionalAuth = (req, res, next) => {
   const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
@@ -743,7 +793,7 @@ app.post("/watchlist", actionRateLimit, authMiddleware, async (req, res) => {
 
   try {
     const movie = await prisma.movie.upsert({
-      where: { tmdb_id: tmdbId },
+      where: { tmdb_id_media_type: { tmdb_id: tmdbId, media_type: cleanMediaType } },
       update: {},
       create: {
         tmdb_id: tmdbId,
@@ -804,7 +854,7 @@ const upsertMovieFromBody = (body) => {
   if (!tmdbId || !title || !mediaType) return null;
   const poster = typeof body.poster_path === "string" ? body.poster_path.slice(0, 300) : "";
   return prisma.movie.upsert({
-    where: { tmdb_id: tmdbId },
+    where: { tmdb_id_media_type: { tmdb_id: tmdbId, media_type: mediaType } },
     update: {},
     create: { tmdb_id: tmdbId, title, media_type: mediaType, poster_path: poster },
   });
@@ -848,7 +898,7 @@ app.put("/library/abandoned", actionRateLimit, authMiddleware, async (req, res) 
 // Séries abandonnées de l'utilisateur (ids TMDB)
 app.get("/library/abandoned", actionRateLimit, authMiddleware, async (req, res) => {
   try {
-    const entries = await prisma.watchlist.findMany({ where: { userId: req.userId, abandoned: true }, include: { movie: { select: { tmdb_id: true } } } });
+    const entries = await prisma.watchlist.findMany({ where: { userId: req.userId, abandoned: true, movie: { media_type: "tv" } }, include: { movie: { select: { tmdb_id: true } } } });
     res.json(entries.map((e) => e.movie.tmdb_id));
   } catch (error) {
     serverError(res, "Erreur séries abandonnées", error);
@@ -861,8 +911,10 @@ app.get("/library/:tmdbId", actionRateLimit, authMiddleware, async (req, res) =>
   if (!tmdbId) return res.status(400).json({ error: "Identifiant invalide" });
 
   try {
+    // ?type=movie|tv : un même id TMDB peut désigner un film ET une série
+    const mediaType = validMediaType(req.query.type);
     const entry = await prisma.watchlist.findFirst({
-      where: { userId: req.userId, movie: { tmdb_id: tmdbId } },
+      where: { userId: req.userId, movie: { tmdb_id: tmdbId, ...(mediaType ? { media_type: mediaType } : {}) } },
     });
     if (entry?.status === "IGNORED") return res.json({ inLibrary: false, ignored: true, movieId: entry.movieId });
     res.json(
@@ -1023,7 +1075,7 @@ app.get("/tmdb/details/:tmdbId/:type", async (req, res) => {
     let reviews = [];
     try {
       const movie = await prisma.movie.findUnique({
-        where: { tmdb_id: tmdbId },
+        where: { tmdb_id_media_type: { tmdb_id: tmdbId, media_type: type } },
         include: {
           reviews: {
             where: { parentId: null },
@@ -1343,8 +1395,9 @@ app.get("/reviews/:tmdbId", async (req, res) => {
   if (!tmdbId) return res.status(400).json({ error: "Identifiant invalide" });
 
   try {
+    const mediaType = validMediaType(req.query.type);
     const reviews = await prisma.review.findMany({
-      where: { movie: { tmdb_id: tmdbId }, parentId: null },
+      where: { movie: { tmdb_id: tmdbId, ...(mediaType ? { media_type: mediaType } : {}) }, parentId: null },
       include: { user: { select: publicUser }, ...withReplyCount },
       orderBy: { createdAt: "desc" },
     });
@@ -1375,17 +1428,20 @@ app.post("/reviews", reviewRateLimit, authMiddleware, async (req, res) => {
   }
 
   try {
-    let movie = await prisma.movie.findUnique({ where: { tmdb_id: tmdbId } });
+    const mediaType = validMediaType(media_type);
+    let movie = await prisma.movie.findFirst({
+      where: { tmdb_id: tmdbId, ...(mediaType ? { media_type: mediaType } : {}) },
+    });
     if (!movie) {
       const cleanTitle = cleanString(title, 300);
       if (!cleanTitle) return res.status(404).json({ error: "Film introuvable" });
       movie = await prisma.movie.upsert({
-        where: { tmdb_id: tmdbId },
+        where: { tmdb_id_media_type: { tmdb_id: tmdbId, media_type: mediaType || "movie" } },
         update: {},
         create: {
           tmdb_id: tmdbId,
           title: cleanTitle,
-          media_type: validMediaType(media_type) || "movie",
+          media_type: mediaType || "movie",
           poster_path: typeof poster_path === "string" ? poster_path.slice(0, 300) : "",
         },
       });
@@ -1728,6 +1784,9 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
   if (err?.type === "entity.parse.failed") {
     return res.status(400).json({ error: "JSON invalide" });
+  }
+  if (err?.type === "entity.too.large") {
+    return res.status(413).json({ error: "Requête trop volumineuse" });
   }
   console.error("❌ Erreur non gérée :", err?.message);
   res.status(500).json({ error: "Erreur serveur" });

@@ -40,13 +40,17 @@ model Follow {
 
 model Movie {
   id          Int        @id @default(autoincrement())
-  tmdb_id     Int        @unique
+  // TMDB réutilise les mêmes ids pour films et séries : l'unicité porte sur le couple (id, type)
+  tmdb_id     Int
   title       String
   media_type  String
   poster_path String
   genreIds    String     @default("")  // ids de genres TMDB séparés par des virgules, "-" = aucun, "" = pas encore chargé
   watchlist   Watchlist[]
   reviews     Review[]
+
+  @@unique([tmdb_id, media_type])
+  @@index([tmdb_id])
 }
 
 model Watchlist {

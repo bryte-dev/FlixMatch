@@ -170,7 +170,7 @@ export default function ReviewSection({ tmdbId, type, title, posterPath, user, o
   const load = useCallback(async () => {
     setError(false);
     try {
-      const res = await axios.get(`${API_URL}/reviews/${tmdbId}`);
+      const res = await axios.get(`${API_URL}/reviews/${tmdbId}`, { params: { type } });
       setReviews(res.data.reviews || []);
       setAvg(res.data.avgRating);
       onAverageChange?.(res.data.avgRating);
@@ -178,7 +178,7 @@ export default function ReviewSection({ tmdbId, type, title, posterPath, user, o
       console.error("Erreur avis :", err);
       setError(true);
     }
-  }, [tmdbId, onAverageChange]);
+  }, [tmdbId, type, onAverageChange]);
 
   useEffect(() => {
     load();

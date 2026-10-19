@@ -80,12 +80,12 @@ function MovieDetail() {
   const refreshLibrary = useCallback(async () => {
     if (!user) return setLibrary({ inLibrary: false });
     try {
-      const res = await axios.get(`${API_URL}/library/${tmdbId}`);
+      const res = await axios.get(`${API_URL}/library/${tmdbId}`, { params: { type } });
       setLibrary(res.data);
     } catch (err) {
       console.error("Erreur statut bibliothèque :", err);
     }
-  }, [user, tmdbId]);
+  }, [user, tmdbId, type]);
 
   useEffect(() => {
     refreshLibrary();

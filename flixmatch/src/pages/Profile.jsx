@@ -75,7 +75,7 @@ export default function Profile() {
               <h2 className="mb-3 text-xl font-bold">Favoris</h2>
               <MediaGrid>
                 {profile.favorites.map((f) => (
-                  <MediaCard key={f.tmdb_id} to={`/${f.media_type}/${f.tmdb_id}`} title={f.title} poster={posterUrl(f.poster_path)} subtitle={f.media_type === "tv" ? "Série" : "Film"} />
+                  <MediaCard key={`${f.media_type}-${f.tmdb_id}`} to={`/${f.media_type}/${f.tmdb_id}`} title={f.title} poster={posterUrl(f.poster_path)} subtitle={f.media_type === "tv" ? "Série" : "Film"} />
                 ))}
               </MediaGrid>
             </>
