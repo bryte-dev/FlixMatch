@@ -43,7 +43,7 @@ export default function Profile() {
     }
   };
 
-  if (error) return <div className="page"><ErrorState message="Profil introuvable." /></div>;
+  if (error) return <div className="page"><ErrorState message={t("profileNotFound")} /></div>;
   if (!profile) return <div className="page flex justify-center py-24 text-brand-400" role="status" aria-label="Chargement"><Spinner className="h-8 w-8" /></div>;
 
   const stats = profile.stats;
@@ -58,17 +58,27 @@ export default function Profile() {
   const section = sections[current];
   const items = current === "favorites" ? profile.favorites : section?.items;
   return (
-    <div className="page max-w-3xl">
-      <section className="surface mb-6 flex flex-wrap items-center gap-4 p-5">
-        <Avatar avatar={profile.avatar} name={profile.username} stats={stats} size={88} />
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-2xl font-extrabold">{profile.username || `Utilisateur ${profile.id}`}</h1>
-          <p className="text-sm text-zinc-400">{profile.followers} {t("followersLabel")} · {profile.following} {t("followingLabel")}</p>
+    <div className="page max-w-5xl">
+      <section className="surface relative mb-6 overflow-hidden">
+        <div className="h-24 bg-gradient-to-r from-brand-600/50 via-brand-500/20 to-transparent sm:h-32" aria-hidden="true" />
+        <div className="flex flex-wrap items-end gap-x-5 gap-y-3 px-5 pb-5 sm:px-8">
+          <Avatar avatar={profile.avatar} name={profile.username} stats={stats} size={104} className="-mt-14 ring-4 ring-ink-950 sm:-mt-16" />
+          <div className="min-w-0 flex-1 basis-48 pt-2">
+            <h1 className="truncate text-2xl font-extrabold sm:text-3xl">{profile.username || `Utilisateur ${profile.id}`}</h1>
+            <p className="mt-1 text-sm text-zinc-400">
+              <span className="font-semibold text-zinc-200">{profile.followers}</span> {t("followersLabel")}
+              <span aria-hidden="true"> · </span>
+              <span className="font-semibold text-zinc-200">{profile.following}</span> {t("followingLabel")}
+            </p>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            {profile.isSelf && <Link to="/account" className="btn btn-secondary">{t("account")}</Link>}
+            {user && !profile.isSelf && (
+              <Button variant={profile.isFollowing ? "secondary" : "primary"} pending={busy} onClick={toggleFollow}>{profile.isFollowing ? t("unfollow") : t("follow")}</Button>
+            )}
+            {!user && <Link to="/login" className="btn btn-primary">{t("loginToFollow")}</Link>}
+          </div>
         </div>
-        {user && !profile.isSelf && (
-          <Button variant={profile.isFollowing ? "secondary" : "primary"} pending={busy} onClick={toggleFollow}>{profile.isFollowing ? t("unfollow") : t("follow")}</Button>
-        )}
-        {!user && <Link to="/login" className="btn btn-primary">Connexion pour suivre</Link>}
       </section>
 
       {profile.restricted ? (
@@ -76,9 +86,9 @@ export default function Profile() {
       ) : (
         <>
           {stats ? (
-            <dl className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {[["Films vus", stats.moviesSeen], ["Séries suivies", stats.seriesFollowed], ["Épisodes vus", stats.episodesWatched], ["Heures (est.)", stats.hoursWatched]].map(([label, value]) => (
-                <div key={label} className="surface p-4 text-center"><dd className="text-2xl font-extrabold text-brand-400">{value}</dd><dt className="text-xs text-zinc-400">{label}</dt></div>
+            <dl className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {[[t("statMovies"), stats.moviesSeen], [t("statSeries"), stats.seriesFollowed], [t("statEpisodes"), stats.episodesWatched], [t("statHours"), stats.hoursWatched]].map(([label, value]) => (
+                <div key={label} className="surface p-4 text-center sm:p-5"><dd className="text-2xl font-extrabold text-brand-400 sm:text-3xl">{value}</dd><dt className="mt-1 text-xs text-zinc-400">{label}</dt></div>
               ))}
             </dl>
           ) : null}
