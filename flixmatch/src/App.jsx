@@ -5,6 +5,7 @@ import { ToastProvider } from "./components/Toast";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Watchlist from "./pages/Watchlist";
+import Tracking from "./pages/Tracking";
 import Favorites from "./pages/Favorites";
 import Seen from "./pages/Seen";
 import AdvancedSearch from "./pages/AdvancedSearch";
@@ -78,6 +79,7 @@ const Shell = () => {
           <Route path="/search" element={<SearchResults />} />
           <Route path="/search/:query" element={<SearchResults />} />
           <Route path="/watchlist" element={<PrivateRoute><Watchlist /></PrivateRoute>} />
+          <Route path="/tracking" element={<PrivateRoute><Tracking /></PrivateRoute>} />
           <Route path="/favorites" element={<PrivateRoute><Favorites /></PrivateRoute>} />
           <Route path="/seen" element={<PrivateRoute><Seen /></PrivateRoute>} />
           <Route path="/junk" element={<PrivateRoute><Junk /></PrivateRoute>} />

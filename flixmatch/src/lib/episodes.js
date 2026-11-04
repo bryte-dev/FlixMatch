@@ -81,3 +81,20 @@ export function seriesStatus({ watchedRegular, totalRegular, abandoned = false }
 }
 
 export const STATUS_LABELS = { to_watch: "À voir", in_progress: "En cours", completed: "Terminé", abandoned: "Abandonné" };
+
+// Nombre d'épisodes réguliers (hors spéciaux) déjà diffusés, d'après la fiche série TMDB
+// (`seasons`, `last_episode_to_air`). Sans dernier épisode connu, tout est considéré comme diffusé.
+export function airedRegularCount(show) {
+  const seasons = (show?.seasons || []).filter((s) => s.season_number > 0);
+  const total = seasons.reduce((sum, s) => sum + (s.episode_count || 0), 0);
+  const last = show?.last_episode_to_air;
+  if (!last || !show?.next_episode_to_air) return total;
+  const before = seasons.filter((s) => s.season_number < last.season_number).reduce((sum, s) => sum + (s.episode_count || 0), 0);
+  return Math.min(total, before + (last.episode_number || 0));
+}
+
+// Jours entiers (calendaires) entre aujourd'hui et une date AAAA-MM-JJ ; négatif = passé
+export function daysUntil(airDate, today = todayISO()) {
+  if (!airDate) return null;
+  return Math.round((Date.parse(`${airDate}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000);
+}

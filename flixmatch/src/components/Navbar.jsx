@@ -3,7 +3,7 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { saveSettings } from "../settings";
 import { unlockThemes } from "../theme";
 import { AuthContext } from "../AuthContext";
-import { FiHome, FiBookmark, FiStar, FiEye, FiTrash2, FiSliders, FiLayers, FiSettings, FiUser, FiMenu, FiX, FiLogOut } from "react-icons/fi";
+import { FiHome, FiBookmark, FiPlayCircle, FiStar, FiEye, FiTrash2, FiSliders, FiLayers, FiSettings, FiUser, FiMenu, FiX, FiLogOut } from "react-icons/fi";
 import { useT } from "../i18n";
 import SearchBar from "./SearchBar";
 import { useToast } from "../toastContext";
@@ -16,6 +16,7 @@ const PUBLIC_LINKS = [
 
 const PRIVATE_LINKS = [
   { to: "/watchlist", key: "watchlist", label: "À voir", icon: FiBookmark },
+  { to: "/tracking", key: "tracking", label: "En cours", icon: FiPlayCircle },
   { to: "/favorites", key: "favorites", label: "Favoris", icon: FiStar },
   { to: "/seen", key: "seen", label: "Vus", icon: FiEye },
   { to: "/junk", key: "trash", label: "Corbeille", icon: FiTrash2 },

@@ -301,7 +301,7 @@ function MovieDetail() {
       <div className="page !pt-0">
         {type === "tv" && (
           <Section title="Épisodes">
-            <EpisodeTracker seriesId={numericId} user={user} />
+            <EpisodeTracker seriesId={numericId} user={user} title={title} posterPath={movie.poster_path || ""} />
           </Section>
         )}
 

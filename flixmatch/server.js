@@ -9,7 +9,7 @@ import axios from "axios";
 import path from "path";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
-import { isAired } from "./src/lib/episodes.js";
+import { isAired, airedRegularCount, seriesStatus, todayISO, daysUntil } from "./src/lib/episodes.js";
 import { getImdbRating } from "./services/omdb.js";
 import { mergeSearchResults } from "./src/lib/searchMerge.js";
 import { MAX_COMMIT_BATCH, MAX_RESOLVE_BATCH, createImporter, sanitizeCommitItem, sanitizeResolveItem } from "./services/importer.js";
@@ -134,7 +134,7 @@ app.use(express.static(distDir));
 
 // Certaines pages du front (/watchlist, /seen, ...) portent le même nom qu'une route API :
 // une navigation navigateur (Accept: text/html) reçoit la SPA, les appels axios reçoivent le JSON.
-app.get(["/watchlist", "/seen", "/favorites", "/junk"], (req, res, next) => {
+app.get(["/watchlist", "/seen", "/favorites", "/junk", "/tracking"], (req, res, next) => {
   if (req.accepts(["json", "html"]) === "html") return sendIndex(res);
   next();
 });
@@ -1627,6 +1627,92 @@ app.get("/episodes", actionRateLimit, authMiddleware, async (req, res) => {
     res.json(groups.map((g) => ({ tmdbSeriesId: g.tmdbSeriesId, watchedCount: g._count._all })));
   } catch (error) {
     serverError(res, "Erreur récapitulatif épisodes", error);
+  }
+});
+
+// « En cours » (séries commencées et non terminées) et « À venir » (prochain épisode à paraître)
+const TRACKING_MAX_SERIES = 80;
+const slimShow = (d) => ({
+  id: d.id,
+  name: d.name,
+  poster_path: d.poster_path || null,
+  seasons: (d.seasons || []).map((s) => ({ season_number: s.season_number, episode_count: s.episode_count || 0 })),
+  last_episode_to_air: d.last_episode_to_air
+    ? { season_number: d.last_episode_to_air.season_number, episode_number: d.last_episode_to_air.episode_number }
+    : null,
+  next_episode_to_air: d.next_episode_to_air
+    ? {
+        season_number: d.next_episode_to_air.season_number,
+        episode_number: d.next_episode_to_air.episode_number,
+        name: d.next_episode_to_air.name || "",
+        air_date: d.next_episode_to_air.air_date || null,
+      }
+    : null,
+});
+
+app.get("/tracking", actionRateLimit, authMiddleware, async (req, res) => {
+  try {
+    const language = langOf(req.query.lang);
+    const [entries, groups] = await Promise.all([
+      prisma.watchlist.findMany({
+        where: { userId: req.userId, status: { notIn: ["JUNK", "IGNORED"] }, movie: { media_type: "tv" } },
+        select: { abandoned: true, createdAt: true, movie: { select: { tmdb_id: true, title: true, poster_path: true } } },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.episodeWatch.groupBy({
+        by: ["tmdbSeriesId"],
+        where: { userId: req.userId, seasonNumber: { gt: 0 } },
+        _count: { _all: true },
+        _max: { watchedAt: true },
+      }),
+    ]);
+
+    const library = new Map(entries.map((e) => [e.movie.tmdb_id, e]));
+    const progress = new Map(groups.map((g) => [g.tmdbSeriesId, { count: g._count._all, lastAt: g._max.watchedAt }]));
+    // Séries récemment regardées d'abord, puis le reste de la bibliothèque
+    const ids = [
+      ...[...progress.entries()].sort((a, b) => (b[1].lastAt || 0) - (a[1].lastAt || 0)).map(([id]) => id),
+      ...entries.map((e) => e.movie.tmdb_id).filter((id) => !progress.has(id)),
+    ].slice(0, TRACKING_MAX_SERIES);
+
+    const shows = new Map();
+    for (let i = 0; i < ids.length; i += 6) {
+      await Promise.all(
+        ids.slice(i, i + 6).map(async (id) => {
+          try {
+            shows.set(id, await tmdbCached(`/tv/${id}`, { language }, 60 * MINUTE, slimShow));
+          } catch (error) {
+            console.error("Suivi : série TMDB indisponible", id, error?.response?.status || error.message);
+          }
+        })
+      );
+    }
+
+    const today = todayISO();
+    const inProgress = [];
+    const upcoming = [];
+    for (const id of ids) {
+      const show = shows.get(id);
+      if (!show) continue;
+      const entry = library.get(id);
+      const watched = progress.get(id)?.count || 0;
+      const abandoned = Boolean(entry?.abandoned);
+      const aired = airedRegularCount(show);
+      const status = seriesStatus({ watchedRegular: watched, totalRegular: aired, abandoned });
+      const item = { tmdbId: id, title: entry?.movie.title || show.name, poster_path: show.poster_path || entry?.movie.poster_path || null };
+
+      if (status === "in_progress") {
+        inProgress.push({ ...item, watched, total: aired, lastWatchedAt: progress.get(id)?.lastAt || null });
+      }
+      const next = show.next_episode_to_air;
+      if (!abandoned && next?.air_date && daysUntil(next.air_date, today) >= 0 && (entry || watched > 0)) {
+        upcoming.push({ ...item, episode: next, watched, total: aired });
+      }
+    }
+    upcoming.sort((a, b) => a.episode.air_date.localeCompare(b.episode.air_date));
+    res.json({ inProgress, upcoming });
+  } catch (error) {
+    serverError(res, "Erreur suivi des séries", error);
   }
 });
 

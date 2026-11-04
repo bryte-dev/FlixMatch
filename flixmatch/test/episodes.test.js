@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   epKey, isAired, missingBefore, incompleteSeasonsBefore, watchedAfter,
-  firstIncompleteSeason, nextUnwatched, lastWatchedLabel, seriesStatus,
+  firstIncompleteSeason, nextUnwatched, lastWatchedLabel, seriesStatus, airedRegularCount, daysUntil,
 } from "../src/lib/episodes.js";
 
 const TODAY = "2025-06-01";
@@ -56,4 +56,19 @@ test("seriesStatus", () => {
   assert.equal(seriesStatus({ watchedRegular: 3, totalRegular: 10 }), "in_progress");
   assert.equal(seriesStatus({ watchedRegular: 3, totalRegular: 10, abandoned: true }), "abandoned");
   assert.equal(seriesStatus({ watchedRegular: 10, totalRegular: 10, abandoned: true }), "completed");
+});
+
+test("airedRegularCount : exclut les spéciaux et les épisodes à venir", () => {
+  const seasons = [{ season_number: 0, episode_count: 4 }, { season_number: 1, episode_count: 10 }, { season_number: 2, episode_count: 8 }];
+  assert.equal(airedRegularCount({ seasons }), 18);
+  const airing = { seasons, last_episode_to_air: { season_number: 2, episode_number: 3 }, next_episode_to_air: { season_number: 2, episode_number: 4 } };
+  assert.equal(airedRegularCount(airing), 13);
+  assert.equal(airedRegularCount({ seasons: [] }), 0);
+});
+
+test("daysUntil : jours calendaires jusqu'à une date", () => {
+  assert.equal(daysUntil("2025-06-01", "2025-06-01"), 0);
+  assert.equal(daysUntil("2025-06-04", "2025-06-01"), 3);
+  assert.equal(daysUntil("2025-05-31", "2025-06-01"), -1);
+  assert.equal(daysUntil(null), null);
 });
