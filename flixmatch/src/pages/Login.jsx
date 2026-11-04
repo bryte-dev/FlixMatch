@@ -1,6 +1,6 @@
 import { useState, useContext } from "react";
 import { AuthContext } from "../AuthContext";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import AuthCard, { FormField } from "../components/AuthCard";
 import { Button } from "../components/ui";
 import { useToast } from "../toastContext";
@@ -13,6 +13,7 @@ const Login = () => {
   const [error, setError] = useState("");
   const { login } = useContext(AuthContext);
   const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
 
   const handleSubmit = async (e) => {
@@ -24,7 +25,8 @@ const Login = () => {
     try {
       await login(email, password);
       toast("Content de te revoir !", "success");
-      navigate("/");
+      const from = location.state?.from;
+      navigate(typeof from === "string" && from.startsWith("/") && !from.startsWith("//") ? from : "/");
     } catch (err) {
       console.error("Erreur de connexion", err);
       setError(errorMessage(err, "Échec de la connexion. Vérifie tes identifiants."));

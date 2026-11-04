@@ -3,7 +3,7 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { saveSettings } from "../settings";
 import { unlockThemes } from "../theme";
 import { AuthContext } from "../AuthContext";
-import { FiHome, FiBookmark, FiPlayCircle, FiStar, FiEye, FiTrash2, FiSliders, FiLayers, FiSettings, FiUser, FiMenu, FiX, FiLogOut, FiChevronDown, FiFolder } from "react-icons/fi";
+import { FiHome, FiBookmark, FiPlayCircle, FiStar, FiEye, FiTrash2, FiSliders, FiLayers, FiSettings, FiUser, FiMenu, FiX, FiLogOut, FiChevronDown, FiFolder, FiUsers } from "react-icons/fi";
 import { useT } from "../i18n";
 import SearchBar from "./SearchBar";
 import Avatar from "./Avatar";
@@ -11,6 +11,7 @@ import { useToast } from "../toastContext";
 
 const HOME = { to: "/", key: "home", icon: FiHome, end: true };
 const DISCOVER = { to: "/discover", key: "discover", icon: FiLayers };
+const NIGHT = { to: "/movie-night", key: "navNight", icon: FiUsers };
 const ADVANCED = { to: "/advanced-search", key: "advancedSearch", icon: FiSliders };
 const MAIN_PRIVATE = [
   { to: "/watchlist", key: "watchlist", icon: FiBookmark },
@@ -23,7 +24,7 @@ const LIBRARY = [
 ];
 
 const linkClass = ({ isActive }) =>
-  `flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition ${
+  `flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition ${
     isActive ? "bg-brand-500/15 text-brand-300" : "text-zinc-300 hover:bg-white/10 hover:text-white"
   }`;
 
@@ -94,8 +95,8 @@ function Navbar() {
     }
   };
 
-  const mobileLinks = user ? [HOME, ...MAIN_PRIVATE, ...LIBRARY, DISCOVER, ADVANCED] : [HOME, DISCOVER, ADVANCED];
-  const desktopLinks = user ? [HOME, DISCOVER, ...MAIN_PRIVATE] : [HOME, DISCOVER, ADVANCED];
+  const mobileLinks = user ? [HOME, ...MAIN_PRIVATE, NIGHT, ...LIBRARY, DISCOVER, ADVANCED] : [HOME, DISCOVER, ADVANCED];
+  const desktopLinks = user ? [HOME, DISCOVER, ...MAIN_PRIVATE, NIGHT] : [HOME, DISCOVER, ADVANCED];
   const profilePath = user?.username ? `/u/${encodeURIComponent(user.username)}` : "/account";
   const closeMenu = () => setMenuOpen(false);
 
@@ -132,12 +133,12 @@ function Navbar() {
           {desktopLinks.map(({ to, key: k, icon: Icon, end }) => (
             <NavLink key={to} to={to} end={end} className={linkClass} title={t(k)}>
               <Icon aria-hidden="true" />
-              <span className="hidden lg:inline">{t(k)}</span>
-              <span className="sr-only lg:hidden">{t(k)}</span>
+              <span className="hidden xl:inline">{t(k)}</span>
+              <span className="sr-only xl:hidden">{t(k)}</span>
             </NavLink>
           ))}
           {user && (
-            <Dropdown label={t("library")} trigger={<><FiFolder aria-hidden="true" /><span className="hidden lg:inline">{t("library")}</span><FiChevronDown aria-hidden="true" size={14} /></>}>
+            <Dropdown label={t("library")} trigger={<><FiFolder aria-hidden="true" /><span className="hidden xl:inline">{t("library")}</span><FiChevronDown aria-hidden="true" size={14} /></>}>
               {[...LIBRARY, ADVANCED].map(({ to, key: k, icon: Icon }) => (
                 <NavLink key={to} to={to} role="menuitem" className={menuItem}><Icon aria-hidden="true" /> {t(k)}</NavLink>
               ))}

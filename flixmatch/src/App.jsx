@@ -25,10 +25,13 @@ import { useKonami, useTheme } from "./theme";
 import { useToast } from "./toastContext";
 import SearchResults from "./pages/SearchResults";
 import MovieDetail from "./pages/MovieDetail";
+import MovieNight from "./pages/MovieNight";
+import MovieNightRoom from "./pages/MovieNightRoom";
 import { Spinner, EmptyState } from "./components/ui";
 
 const PrivateRoute = ({ children }) => {
   const { user, loading } = useContext(AuthContext);
+  const location = useLocation();
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center py-24 text-brand-400" role="status" aria-label="Chargement">
@@ -36,7 +39,7 @@ const PrivateRoute = ({ children }) => {
       </div>
     );
   }
-  return user ? children : <Navigate to="/login" replace />;
+  return user ? children : <Navigate to="/login" replace state={{ from: location.pathname }} />;
 };
 
 const ScrollToTop = () => {
@@ -79,6 +82,8 @@ const Shell = () => {
           <Route path="/search" element={<SearchResults />} />
           <Route path="/search/:query" element={<SearchResults />} />
           <Route path="/watchlist" element={<PrivateRoute><Watchlist /></PrivateRoute>} />
+          <Route path="/movie-night" element={<PrivateRoute><MovieNight /></PrivateRoute>} />
+          <Route path="/movie-night/:code" element={<PrivateRoute><MovieNightRoom /></PrivateRoute>} />
           <Route path="/tracking" element={<PrivateRoute><Tracking /></PrivateRoute>} />
           <Route path="/favorites" element={<PrivateRoute><Favorites /></PrivateRoute>} />
           <Route path="/seen" element={<PrivateRoute><Seen /></PrivateRoute>} />

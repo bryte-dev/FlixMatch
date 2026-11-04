@@ -250,3 +250,15 @@ img.img-fallback { object-fit: contain; padding: 12%; opacity: 0.6; }
 /* Titres très longs (mots composés, URL) : coupure plutôt que débordement horizontal */
 .break-anywhere { overflow-wrap: anywhere; }
 .page-enter { animation: page-in 0.2s ease-out; }
+
+@keyframes match-pop {
+  0% { transform: scale(0.6); opacity: 0; }
+  60% { transform: scale(1.06); opacity: 1; }
+  100% { transform: scale(1); }
+}
+@keyframes confetti-fall {
+  0% { transform: translate3d(0, -10vh, 0) rotate(0deg); opacity: 1; }
+  100% { transform: translate3d(var(--drift, 0px), 105vh, 0) rotate(540deg); opacity: 0.9; }
+}
+.match-pop { animation: match-pop 0.45s ease-out both; }
+.confetti { position: absolute; top: 0; animation: confetti-fall linear forwards; }
