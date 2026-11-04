@@ -42,7 +42,7 @@ function ProgressBar({ done, total, label }) {
 const seasonLabel = (season) =>
   season.season_number === 0 ? "Épisodes spéciaux" : season.name || `Saison ${season.season_number}`;
 
-export default function EpisodeTracker({ seriesId, user }) {
+export default function EpisodeTracker({ seriesId, user, title = "", posterPath = "" }) {
   const toast = useToast();
   const { isBusy, run } = useBusy();
 
@@ -55,6 +55,15 @@ export default function EpisodeTracker({ seriesId, user }) {
   const [confirmReset, setConfirmReset] = useState(null);
   const [sheet, setSheet] = useState(null);
   const [abandonedSet, setAbandonedSet] = useState(readAbandoned);
+
+  // L'abandon est stocké côté serveur (visible sur tous les appareils) ; le stockage local ne sert que d'ancien repli
+  useEffect(() => {
+    if (!user) return;
+    axios
+      .get(`${API_URL}/library/abandoned`)
+      .then((res) => setAbandonedSet((prev) => new Set([...prev, ...res.data.map(Number)])))
+      .catch(() => {});
+  }, [user]);
   const abandoned = abandonedSet.has(Number(seriesId));
 
   const loadSeasons = useCallback(async () => {
@@ -254,17 +263,31 @@ export default function EpisodeTracker({ seriesId, user }) {
       }
     });
 
-  const toggleAbandoned = () => {
-    const next = new Set(abandonedSet);
-    if (next.has(Number(seriesId))) next.delete(Number(seriesId));
-    else next.add(Number(seriesId));
-    setAbandonedSet(next);
-    try {
-      localStorage.setItem(ABANDONED_KEY, JSON.stringify([...next]));
-    } catch {
-      // stockage indisponible
-    }
-  };
+  const toggleAbandoned = () =>
+    run("abandon", async () => {
+      const id = Number(seriesId);
+      const next = new Set(abandonedSet);
+      const value = !next.has(id);
+      if (value) next.add(id);
+      else next.delete(id);
+      try {
+        await axios.put(`${API_URL}/library/abandoned`, {
+          abandoned: value,
+          tmdb_id: id,
+          media_type: "tv",
+          title: title || `TMDB ${id}`,
+          poster_path: posterPath || "",
+        });
+        setAbandonedSet(next);
+        try {
+          localStorage.setItem(ABANDONED_KEY, JSON.stringify([...next]));
+        } catch {
+          // stockage indisponible
+        }
+      } catch (err) {
+        failure(err, "Impossible de modifier l'état de la série");
+      }
+    });
 
   const runSheetAction = async (action) => {
     setSheet(null);

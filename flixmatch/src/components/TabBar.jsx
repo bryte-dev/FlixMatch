@@ -1,6 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { useContext } from "react";
-import { FiHome, FiLayers, FiSearch, FiBookmark, FiUser } from "react-icons/fi";
+import { FiHome, FiLayers, FiSearch, FiBookmark, FiPlayCircle, FiUser } from "react-icons/fi";
 import { AuthContext } from "../AuthContext";
 import { useT } from "../i18n";
 
@@ -9,6 +9,7 @@ const TABS = [
   { to: "/discover", key: "discover", label: "Découverte", icon: FiLayers },
   { to: "/advanced-search", key: "search", label: "Recherche", icon: FiSearch },
   { to: "/watchlist", key: "watchlist", label: "À voir", icon: FiBookmark, private: true },
+  { to: "/tracking", key: "tracking", label: "En cours", icon: FiPlayCircle, private: true },
   { to: "/account", key: "profile", label: "Profil", icon: FiUser, private: true },
 ];
 
