@@ -10,7 +10,8 @@ datasource db {
 model User {
   id       Int       @id @default(autoincrement())
   email    String    @unique
-  username String?   // Nouveau champ username optionnel
+  username String?
+  usernameKey String? @unique // username en minuscules : unicité insensible à la casse
   password String
   watchlist Watchlist[]
   reviews  Review[]  // 🔥 Un utilisateur peut écrire plusieurs reviews
@@ -18,8 +19,11 @@ model User {
   avatar           String?
   inviteCode       String?  @unique
   privacyProfile   String   @default("public") // public | friends | private
-  privacyLibrary   String   @default("public")
-  privacyActivity  String   @default("public")
+  privacyLibrary   String   @default("private") // stats + favoris
+  privacyActivity  String   @default("private")
+  privacySeen      String   @default("private")
+  privacyWatchlist String   @default("private")
+  privacyTracking  String   @default("private") // séries en cours
   followers        Follow[] @relation("Followed")
   following        Follow[] @relation("Follower")
 }

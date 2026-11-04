@@ -9,6 +9,7 @@ import axios from "axios";
 import path from "path";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
+import { validateUsername, usernameKey } from "./src/lib/username.js";
 import { isAired, airedRegularCount, seriesStatus, todayISO, daysUntil } from "./src/lib/episodes.js";
 import { getImdbRating } from "./services/omdb.js";
 import { mergeSearchResults } from "./src/lib/searchMerge.js";
@@ -367,7 +368,7 @@ app.get("/me", authMiddleware, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.userId },
-      select: { id: true, email: true, username: true, avatar: true, privacyProfile: true, privacyLibrary: true, privacyActivity: true },
+      select: { id: true, email: true, username: true, avatar: true, privacyProfile: true, privacyLibrary: true, privacyActivity: true, privacySeen: true, privacyWatchlist: true, privacyTracking: true },
     });
 
     if (!user) return res.status(404).json({ error: "Utilisateur introuvable" });
@@ -377,6 +378,15 @@ app.get("/me", authMiddleware, async (req, res) => {
     serverError(res, "Erreur /me", error);
   }
 });
+
+const USERNAME_ERRORS = {
+  usernameInvalid: "Nom d'utilisateur invalide",
+  usernameLength: "Le nom d'utilisateur doit contenir entre 3 et 30 caractères",
+  usernameChars: "Lettres, chiffres, point, tiret et underscore uniquement",
+  usernameNeedsLetter: "Le nom d'utilisateur doit contenir au moins une lettre",
+  usernameReserved: "Ce nom d'utilisateur est réservé",
+  usernameTaken: "Ce nom d'utilisateur est déjà pris",
+};
 
 app.post("/register", authRateLimit, async (req, res) => {
   const { email, password, username } = req.body || {};
@@ -397,23 +407,22 @@ app.post("/register", authRateLimit, async (req, res) => {
       .json({ error: "Le mot de passe doit contenir entre 8 et 72 caractères" });
   }
 
-  let cleanUsername = null;
-  if (username !== undefined && username !== null && username !== "") {
-    cleanUsername = cleanString(username, 50);
-    if (!cleanUsername) {
-      return res.status(400).json({ error: "Nom d'utilisateur invalide (50 caractères max)" });
-    }
-  }
+  const checked = validateUsername(username);
+  if (!checked.ok) return res.status(400).json({ error: USERNAME_ERRORS[checked.reason], reason: checked.reason });
+  const cleanUsername = checked.username;
 
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
-      data: { email: normalizedEmail, username: cleanUsername, password: hashedPassword },
+      data: { email: normalizedEmail, username: cleanUsername, usernameKey: usernameKey(cleanUsername), password: hashedPassword },
     });
 
     res.status(201).json({ message: "Utilisateur créé", userId: user.id });
   } catch (error) {
     if (error?.code === "P2002") {
+      if (error.meta?.target?.includes?.("usernameKey")) {
+        return res.status(409).json({ error: USERNAME_ERRORS.usernameTaken, reason: "usernameTaken" });
+      }
       return res.status(409).json({ error: "Impossible de créer le compte avec ces informations" });
     }
     serverError(res, "Erreur inscription", error);
@@ -451,25 +460,24 @@ app.post("/logout", (req, res) => {
 const PRIVACY_LEVELS = ["public", "friends", "private"];
 const AVATAR_REGEX = /^(preset:[a-z0-9-]{1,20}|generated|data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+)$/;
 const MAX_AVATAR_LENGTH = 70000;
-const accountSelect = { id: true, email: true, username: true, avatar: true, privacyProfile: true, privacyLibrary: true, privacyActivity: true };
+const accountSelect = { id: true, email: true, username: true, avatar: true, privacyProfile: true, privacyLibrary: true, privacyActivity: true, privacySeen: true, privacyWatchlist: true, privacyTracking: true };
 
 app.put("/account/update", actionRateLimit, authMiddleware, async (req, res) => {
-  const { username, avatar, privacyProfile, privacyLibrary, privacyActivity } = req.body || {};
+  const { username, avatar, privacyProfile, privacyLibrary, privacyActivity, privacySeen, privacyWatchlist, privacyTracking } = req.body || {};
   const data = {};
 
   if (username !== undefined) {
-    if (username === null || username === "") data.username = null;
-    else {
-      data.username = cleanString(username, 50);
-      if (!data.username) return res.status(400).json({ error: "Nom d'utilisateur invalide (50 caractères max)" });
-    }
+    const checked = validateUsername(username);
+    if (!checked.ok) return res.status(400).json({ error: USERNAME_ERRORS[checked.reason], reason: checked.reason });
+    data.username = checked.username;
+    data.usernameKey = usernameKey(checked.username);
   }
   if (avatar !== undefined) {
     if (avatar === null || avatar === "") data.avatar = null;
     else if (typeof avatar === "string" && avatar.length <= MAX_AVATAR_LENGTH && AVATAR_REGEX.test(avatar)) data.avatar = avatar;
     else return res.status(400).json({ error: "Avatar invalide (image 70 Ko max)" });
   }
-  for (const [field, value] of Object.entries({ privacyProfile, privacyLibrary, privacyActivity })) {
+  for (const [field, value] of Object.entries({ privacyProfile, privacyLibrary, privacyActivity, privacySeen, privacyWatchlist, privacyTracking })) {
     if (value === undefined) continue;
     if (!PRIVACY_LEVELS.includes(value)) return res.status(400).json({ error: "Niveau de confidentialité invalide" });
     data[field] = value;
@@ -482,6 +490,7 @@ app.put("/account/update", actionRateLimit, authMiddleware, async (req, res) => 
     if (error?.code === "P2025") {
       return res.status(404).json({ error: "Utilisateur introuvable" });
     }
+    if (error?.code === "P2002") return res.status(409).json({ error: USERNAME_ERRORS.usernameTaken, reason: "usernameTaken" });
     serverError(res, "Erreur mise à jour profil", error);
   }
 });
@@ -748,33 +757,85 @@ const topGenres = async (userId, language) => {
   }
 };
 
+// Disponibilité d'un nom d'utilisateur (déclaré avant /users/:id). Le nom actuel de l'appelant reste « disponible ».
+app.get("/users/username-available", searchRateLimit, optionalAuth, async (req, res) => {
+  const checked = validateUsername(req.query.u);
+  if (!checked.ok) return res.json({ available: false, reason: checked.reason });
+  try {
+    const owner = await prisma.user.findUnique({ where: { usernameKey: usernameKey(checked.username) }, select: { id: true } });
+    const available = !owner || owner.id === req.userId;
+    res.json(available ? { available } : { available, reason: "usernameTaken" });
+  } catch (error) {
+    serverError(res, "Erreur disponibilité du nom", error);
+  }
+});
+
+const PROFILE_SECTION_LIMIT = 24;
+const mediaItem = (m) => ({ tmdb_id: m.tmdb_id, title: m.title, media_type: m.media_type, poster_path: m.poster_path });
+
+// Listes (vus / à voir / en cours) que le propriétaire accepte de montrer à ce visiteur
+const profileSections = async (user, viewerId, language) => {
+  const id = user.id;
+  const sections = {};
+  const [canSeen, canWatchlist, canTracking] = await Promise.all([
+    canView(user.privacySeen, viewerId, id),
+    canView(user.privacyWatchlist, viewerId, id),
+    canView(user.privacyTracking, viewerId, id),
+  ]);
+  const libraryWhere = (status) => ({ userId: id, ...status });
+  const library = async (where) => {
+    const [total, rows] = await Promise.all([
+      prisma.watchlist.count({ where }),
+      prisma.watchlist.findMany({ where, include: { movie: true }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: PROFILE_SECTION_LIMIT }),
+    ]);
+    return { visible: true, total, items: rows.map((r) => ({ ...mediaItem(r.movie), rating: r.rating })) };
+  };
+  const [seen, watchlist, tracking] = await Promise.all([
+    canSeen ? library(libraryWhere({ status: "SEEN" })) : { visible: false },
+    canWatchlist ? library(libraryWhere({ status: "WATCHLIST" })) : { visible: false },
+    canTracking
+      ? computeTracking(id, language).then(({ inProgress }) => ({
+          visible: true,
+          total: inProgress.length,
+          items: inProgress.slice(0, PROFILE_SECTION_LIMIT).map((s) => ({ tmdb_id: s.tmdbId, title: s.title, media_type: "tv", poster_path: s.poster_path, watched: s.watched, total: s.total })),
+        }))
+      : { visible: false },
+  ]);
+  Object.assign(sections, { seen, watchlist, tracking });
+  return sections;
+};
+
 app.get("/users/:id", actionRateLimit, optionalAuth, async (req, res) => {
-  const id = parseId(req.params.id);
-  if (!id) return res.status(400).json({ error: "Identifiant invalide" });
+  // Accepte un identifiant numérique ou un nom d'utilisateur (/u/pseudo)
+  const param = String(req.params.id);
+  const byName = !/^\d+$/.test(param);
+  const id = byName ? null : parseId(param);
+  const key = byName ? usernameKey(param).slice(0, 60) : null;
+  if (!byName && !id) return res.status(400).json({ error: "Identifiant invalide" });
   try {
     const user = await prisma.user.findUnique({
-      where: { id },
-      select: { ...publicCard, privacyProfile: true, privacyLibrary: true, privacyActivity: true, _count: { select: { followers: true, following: true } } },
+      where: byName ? { usernameKey: key } : { id },
+      select: { ...publicCard, privacyProfile: true, privacyLibrary: true, privacyActivity: true, privacySeen: true, privacyWatchlist: true, privacyTracking: true, _count: { select: { followers: true, following: true } } },
     });
     if (!user) return res.status(404).json({ error: "Utilisateur introuvable" });
 
     const viewerId = req.userId;
-    const following = viewerId ? (await prisma.follow.count({ where: { followerId: viewerId, followingId: id } })) > 0 : false;
-    const base = { id: user.id, username: user.username, avatar: user.avatar, followers: user._count.followers, following: user._count.following, isSelf: viewerId === id, isFollowing: following };
+    const following = viewerId ? (await prisma.follow.count({ where: { followerId: viewerId, followingId: user.id } })) > 0 : false;
+    const base = { id: user.id, username: user.username, avatar: user.avatar, followers: user._count.followers, following: user._count.following, isSelf: viewerId === user.id, isFollowing: following };
 
-    if (!(await canView(user.privacyProfile, viewerId, id))) return res.json({ ...base, restricted: true });
+    if (!(await canView(user.privacyProfile, viewerId, user.id))) return res.json({ ...base, restricted: true });
 
-    const out = { ...base, restricted: false };
-    if (await canView(user.privacyLibrary, viewerId, id)) {
+    const out = { ...base, restricted: false, sections: await profileSections(user, viewerId, langOf(req.query.lang)) };
+    if (await canView(user.privacyLibrary, viewerId, user.id)) {
       const [seen, series, episodes] = await Promise.all([
-        prisma.watchlist.count({ where: { userId: id, status: "SEEN", movie: { media_type: "movie" } } }),
-        prisma.watchlist.count({ where: { userId: id, movie: { media_type: "tv" }, status: { notIn: ["JUNK", "IGNORED"] } } }),
-        prisma.episodeWatch.aggregate({ where: { userId: id }, _count: { _all: true }, _sum: { runtime: true } }),
+        prisma.watchlist.count({ where: { userId: user.id, status: "SEEN", movie: { media_type: "movie" } } }),
+        prisma.watchlist.count({ where: { userId: user.id, movie: { media_type: "tv" }, status: { notIn: ["JUNK", "IGNORED"] } } }),
+        prisma.episodeWatch.aggregate({ where: { userId: user.id }, _count: { _all: true }, _sum: { runtime: true } }),
       ]);
       const minutes = (episodes._sum.runtime || 0) + seen * 105; // durée moyenne estimée pour les films
       out.stats = { moviesSeen: seen, seriesFollowed: series, episodesWatched: episodes._count._all, hoursWatched: Math.round(minutes / 60) };
-      out.stats.topGenres = await topGenres(id, langOf(req.query.lang));
-      const favorites = await prisma.watchlist.findMany({ where: { userId: id, isFavorite: true }, include: { movie: true }, take: 12 });
+      out.stats.topGenres = await topGenres(user.id, langOf(req.query.lang));
+      const favorites = await prisma.watchlist.findMany({ where: { userId: user.id, isFavorite: true }, include: { movie: true }, take: 12 });
       out.favorites = favorites.map((f) => ({ tmdb_id: f.movie.tmdb_id, title: f.movie.title, media_type: f.movie.media_type, poster_path: f.movie.poster_path }));
     }
     res.json(out);
@@ -1650,67 +1711,71 @@ const slimShow = (d) => ({
     : null,
 });
 
+// Séries en cours et épisodes à venir d'un utilisateur (utilisé par /tracking et les profils)
+const computeTracking = async (userId, language) => {
+  const [entries, groups] = await Promise.all([
+    prisma.watchlist.findMany({
+      where: { userId, status: { notIn: ["JUNK", "IGNORED"] }, movie: { media_type: "tv" } },
+      select: { abandoned: true, createdAt: true, movie: { select: { tmdb_id: true, title: true, poster_path: true } } },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.episodeWatch.groupBy({
+      by: ["tmdbSeriesId"],
+      where: { userId, seasonNumber: { gt: 0 } },
+      _count: { _all: true },
+      _max: { watchedAt: true },
+    }),
+  ]);
+
+  const library = new Map(entries.map((e) => [e.movie.tmdb_id, e]));
+  const progress = new Map(groups.map((g) => [g.tmdbSeriesId, { count: g._count._all, lastAt: g._max.watchedAt }]));
+  // Séries récemment regardées d'abord, puis le reste de la bibliothèque
+  const ids = [
+    ...[...progress.entries()].sort((a, b) => (b[1].lastAt || 0) - (a[1].lastAt || 0)).map(([id]) => id),
+    ...entries.map((e) => e.movie.tmdb_id).filter((id) => !progress.has(id)),
+  ].slice(0, TRACKING_MAX_SERIES);
+
+  const shows = new Map();
+  for (let i = 0; i < ids.length; i += 6) {
+    await Promise.all(
+      ids.slice(i, i + 6).map(async (id) => {
+        try {
+          shows.set(id, await tmdbCached(`/tv/${id}`, { language }, 60 * MINUTE, slimShow));
+        } catch (error) {
+          console.error("Suivi : série TMDB indisponible", id, error?.response?.status || error.message);
+        }
+      })
+    );
+  }
+
+  const today = todayISO();
+  const inProgress = [];
+  const upcoming = [];
+  for (const id of ids) {
+    const show = shows.get(id);
+    if (!show) continue;
+    const entry = library.get(id);
+    const watched = progress.get(id)?.count || 0;
+    const abandoned = Boolean(entry?.abandoned);
+    const aired = airedRegularCount(show);
+    const status = seriesStatus({ watchedRegular: watched, totalRegular: aired, abandoned });
+    const item = { tmdbId: id, title: entry?.movie.title || show.name, poster_path: show.poster_path || entry?.movie.poster_path || null };
+
+    if (status === "in_progress") {
+      inProgress.push({ ...item, watched, total: aired, lastWatchedAt: progress.get(id)?.lastAt || null });
+    }
+    const next = show.next_episode_to_air;
+    if (!abandoned && next?.air_date && daysUntil(next.air_date, today) >= 0 && (entry || watched > 0)) {
+      upcoming.push({ ...item, episode: next, watched, total: aired });
+    }
+  }
+  upcoming.sort((a, b) => a.episode.air_date.localeCompare(b.episode.air_date));
+  return { inProgress, upcoming };
+};
+
 app.get("/tracking", actionRateLimit, authMiddleware, async (req, res) => {
   try {
-    const language = langOf(req.query.lang);
-    const [entries, groups] = await Promise.all([
-      prisma.watchlist.findMany({
-        where: { userId: req.userId, status: { notIn: ["JUNK", "IGNORED"] }, movie: { media_type: "tv" } },
-        select: { abandoned: true, createdAt: true, movie: { select: { tmdb_id: true, title: true, poster_path: true } } },
-        orderBy: { createdAt: "desc" },
-      }),
-      prisma.episodeWatch.groupBy({
-        by: ["tmdbSeriesId"],
-        where: { userId: req.userId, seasonNumber: { gt: 0 } },
-        _count: { _all: true },
-        _max: { watchedAt: true },
-      }),
-    ]);
-
-    const library = new Map(entries.map((e) => [e.movie.tmdb_id, e]));
-    const progress = new Map(groups.map((g) => [g.tmdbSeriesId, { count: g._count._all, lastAt: g._max.watchedAt }]));
-    // Séries récemment regardées d'abord, puis le reste de la bibliothèque
-    const ids = [
-      ...[...progress.entries()].sort((a, b) => (b[1].lastAt || 0) - (a[1].lastAt || 0)).map(([id]) => id),
-      ...entries.map((e) => e.movie.tmdb_id).filter((id) => !progress.has(id)),
-    ].slice(0, TRACKING_MAX_SERIES);
-
-    const shows = new Map();
-    for (let i = 0; i < ids.length; i += 6) {
-      await Promise.all(
-        ids.slice(i, i + 6).map(async (id) => {
-          try {
-            shows.set(id, await tmdbCached(`/tv/${id}`, { language }, 60 * MINUTE, slimShow));
-          } catch (error) {
-            console.error("Suivi : série TMDB indisponible", id, error?.response?.status || error.message);
-          }
-        })
-      );
-    }
-
-    const today = todayISO();
-    const inProgress = [];
-    const upcoming = [];
-    for (const id of ids) {
-      const show = shows.get(id);
-      if (!show) continue;
-      const entry = library.get(id);
-      const watched = progress.get(id)?.count || 0;
-      const abandoned = Boolean(entry?.abandoned);
-      const aired = airedRegularCount(show);
-      const status = seriesStatus({ watchedRegular: watched, totalRegular: aired, abandoned });
-      const item = { tmdbId: id, title: entry?.movie.title || show.name, poster_path: show.poster_path || entry?.movie.poster_path || null };
-
-      if (status === "in_progress") {
-        inProgress.push({ ...item, watched, total: aired, lastWatchedAt: progress.get(id)?.lastAt || null });
-      }
-      const next = show.next_episode_to_air;
-      if (!abandoned && next?.air_date && daysUntil(next.air_date, today) >= 0 && (entry || watched > 0)) {
-        upcoming.push({ ...item, episode: next, watched, total: aired });
-      }
-    }
-    upcoming.sort((a, b) => a.episode.air_date.localeCompare(b.episode.air_date));
-    res.json({ inProgress, upcoming });
+    res.json(await computeTracking(req.userId, langOf(req.query.lang)));
   } catch (error) {
     serverError(res, "Erreur suivi des séries", error);
   }

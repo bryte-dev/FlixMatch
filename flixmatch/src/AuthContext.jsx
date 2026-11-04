@@ -47,10 +47,10 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await axios.put("/account/update", userData);
       setUser((prev) => ({ ...prev, ...(res.data?.user || userData) }));
-      return true;
+      return { ok: true };
     } catch (error) {
       console.error("Erreur lors de la mise à jour du profil:", error);
-      return false;
+      return { ok: false, reason: error.response?.data?.reason || null, error: error.response?.data?.error || null };
     }
   };
 

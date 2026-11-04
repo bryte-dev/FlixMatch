@@ -1219,3 +1219,8 @@ TMDB API
 The most complete part of the project is the combination of movie discovery and personal movie organization.
 
 The “Tinder for Movies” aspect is currently more of a product concept than a fully implemented swipe-and-match system. The project is best described as a **full-stack movie discovery and personal library prototype**, with several advanced features already present and a number of technical improvements still required before production use.
+
+## Pseudos uniques et profils sociaux
+
+- Pseudo unique (insensible à la casse, 3–30 caractères) ; profils accessibles via `/u/:pseudo`.
+- Chaque section du profil (vus, à voir, en cours, bibliothèque, activité) a sa propre visibilité : `public`, `friends` (suivi mutuel) ou `private` (défaut pour les nouveaux comptes). Les comptes existants gardent leurs réglages.
