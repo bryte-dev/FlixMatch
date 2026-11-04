@@ -4,7 +4,7 @@ import axios from "axios";
 import { track } from "../lib/analytics";
 import { API_URL } from "../api";
 import { useSettings } from "../settings";
-import { useT } from "%s";
+import { useT } from "../i18n";
 import { resultKey } from "../lib/searchMerge";
 import MediaCard from "../components/MediaCard";
 import { EmptyState, ErrorState, GridSkeleton, InfiniteSentinel, MediaGrid, PageHeader, Spinner, Tabs } from "../components/ui";

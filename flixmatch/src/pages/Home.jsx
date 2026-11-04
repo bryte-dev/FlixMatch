@@ -5,7 +5,7 @@ import { FiBookmark, FiCheck, FiPlus } from "react-icons/fi";
 import { API_URL } from "../api";
 import { AuthContext } from "../AuthContext";
 import { useToast } from "../toastContext";
-import { useT } from "%s";
+import { useT } from "../i18n";
 import useBusy from "../hooks/useBusy";
 import MediaCard from "../components/MediaCard";
 import { Button, EmptyState, ErrorState, GridSkeleton, MediaGrid, Spinner } from "../components/ui";

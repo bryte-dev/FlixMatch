@@ -3,7 +3,7 @@ import axios from "axios";
 import { FormField } from "./AuthCard";
 import { BottomSheet, Button } from "./ui";
 import { useToast } from "../toastContext";
-import { useT } from "%s";
+import { useT } from "../i18n";
 import { errorMessage } from "../utils";
 
 // Caches locaux liés à la bibliothèque (ex. séries abandonnées) à vider après un reset/une suppression

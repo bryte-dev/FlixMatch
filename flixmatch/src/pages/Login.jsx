@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import AuthCard, { FormField } from "../components/AuthCard";
 import { Button } from "../components/ui";
 import { useToast } from "../toastContext";
-import { useT } from "%s";
+import { useT } from "../i18n";
 import { errorMessage } from "../utils";
 
 const Login = () => {

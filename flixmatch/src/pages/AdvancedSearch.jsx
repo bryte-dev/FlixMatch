@@ -3,7 +3,7 @@ import axios from "axios";
 import { track } from "../lib/analytics";
 import { API_URL } from "../api";
 import { useSettings } from "../settings";
-import { useT } from "%s";
+import { useT } from "../i18n";
 import { usePro } from "../proContext";
 import ProBadge from "../components/ProBadge";
 import MediaCard from "../components/MediaCard";

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import { AuthContext } from "../AuthContext";
 import { useToast } from "../toastContext";
-import { useT } from "%s";
+import { useT } from "../i18n";
 import Avatar from "../components/Avatar";
 import AuthCard from "../components/AuthCard";
 import { Button, ErrorState } from "../components/ui";

@@ -4,11 +4,13 @@ import axios from "axios";
 import { FiCornerDownRight, FiTrash2 } from "react-icons/fi";
 import { API_URL } from "../api";
 import { useToast } from "../toastContext";
+import { useT } from "../i18n";
 import useBusy from "../hooks/useBusy";
 import { Button, ErrorState, StarRating } from "./ui";
 import { errorMessage, formatDate } from "../utils";
 
 function ReplyForm({ placeholder, pending, onSubmit, onCancel }) {
+  const t = useT();
   const [text, setText] = useState("");
   const id = useId();
   return (
@@ -23,8 +25,8 @@ function ReplyForm({ placeholder, pending, onSubmit, onCancel }) {
       <label className="sr-only" htmlFor={id}>{placeholder}</label>
       <textarea id={id} rows={2} maxLength={2000} value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} className="field resize-y" />
       <div className="flex gap-2">
-        <Button type="submit" variant="primary" size="sm" pending={pending} pendingLabel="Envoi…" disabled={!text.trim()}>Envoyer</Button>
-        {onCancel && <Button size="sm" variant="ghost" onClick={onCancel}>Annuler</Button>}
+        <Button type="submit" variant="primary" size="sm" pending={pending} pendingLabel={t("rvSending")} disabled={!text.trim()}>{t("rvSend")}</Button>
+        {onCancel && <Button size="sm" variant="ghost" onClick={onCancel}>{t("cancel")}</Button>}
       </div>
     </form>
   );
@@ -32,6 +34,7 @@ function ReplyForm({ placeholder, pending, onSubmit, onCancel }) {
 
 function ReviewItem({ review, depth, user, post, onDeleted }) {
   const toast = useToast();
+  const t = useT();
   const { isBusy, run } = useBusy();
   const [replies, setReplies] = useState(null);
   const [replyCount, setReplyCount] = useState(review._count?.replies ?? 0);
@@ -51,7 +54,7 @@ function ReviewItem({ review, depth, user, post, onDeleted }) {
         setNextCursor(res.data.hasMore ? res.data.nextCursor : null);
         setShowReplies(true);
       } catch (err) {
-        toast(errorMessage(err, "Impossible de charger les réponses"), "error");
+        toast(errorMessage(err, t("rvLoadRepliesFail")), "error");
       }
     });
 
@@ -69,10 +72,10 @@ function ReviewItem({ review, depth, user, post, onDeleted }) {
         setReplyCount((c) => c + 1);
         setShowReplies(true);
         setReplyOpen(false);
-        toast("Réponse publiée", "success");
+        toast(t("rvReplyPosted"), "success");
         return true;
       } catch (err) {
-        toast(errorMessage(err, "Impossible de publier la réponse"), "error");
+        toast(errorMessage(err, t("rvReplyFail")), "error");
         return false;
       }
     });
@@ -81,19 +84,19 @@ function ReviewItem({ review, depth, user, post, onDeleted }) {
     run("delete", async () => {
       try {
         await axios.delete(`${API_URL}/reviews/${review.id}`);
-        toast("Avis supprimé", "success");
+        toast(t("rvDeleted"), "success");
         onDeleted(review.id);
       } catch (err) {
         setConfirmDelete(false);
-        toast(errorMessage(err, "Impossible de supprimer l'avis"), "error");
+        toast(errorMessage(err, t("rvDeleteFail")), "error");
       }
     });
 
   return (
     <li className={depth > 0 ? "mt-3 border-l border-white/10 pl-4" : "surface p-4 sm:p-5"}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="font-semibold">{review.user?.username || "Utilisateur"}</span>
-        {review.rating ? <StarRating value={review.rating} label="Note de l'avis" /> : null}
+        <span className="font-semibold">{review.user?.username || t("rvUser")}</span>
+        {review.rating ? <StarRating value={review.rating} label={t("rvRatingLabel")} /> : null}
         <span className="text-xs text-zinc-500">{formatDate(review.createdAt)}</span>
       </div>
       <p className="mt-2 whitespace-pre-line break-words text-zinc-200">{review.comment}</p>
@@ -101,23 +104,23 @@ function ReviewItem({ review, depth, user, post, onDeleted }) {
       <div className="mt-3 flex flex-wrap items-center gap-1">
         {user && (
           <Button size="sm" variant="ghost" onClick={() => setReplyOpen((o) => !o)} aria-expanded={replyOpen}>
-            <FiCornerDownRight aria-hidden="true" /> Répondre
+            <FiCornerDownRight aria-hidden="true" /> {t("rvReply")}
           </Button>
         )}
         {replyCount > 0 && (
           <Button size="sm" variant="ghost" pending={isBusy("load")} onClick={toggleReplies} aria-expanded={showReplies}>
-            {showReplies ? "Masquer" : "Voir"} {replyCount} réponse{replyCount > 1 ? "s" : ""}
+            {showReplies ? t("rvHide") : t("rvShow")} {t(replyCount > 1 ? "rvReplyMany" : "rvReplyOne", { n: replyCount })}
           </Button>
         )}
         {isOwner &&
           (confirmDelete ? (
             <span className="ml-auto flex items-center gap-1 text-sm">
-              <span className="text-zinc-400">Supprimer ?</span>
-              <Button size="sm" variant="danger" pending={isBusy("delete")} pendingLabel="…" onClick={remove}>Oui</Button>
-              <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>Non</Button>
+              <span className="text-zinc-400">{t("rvDeleteQ")}</span>
+              <Button size="sm" variant="danger" pending={isBusy("delete")} pendingLabel="…" onClick={remove}>{t("rvYes")}</Button>
+              <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>{t("rvNo")}</Button>
             </span>
           ) : (
-            <Button size="sm" variant="ghost" className="ml-auto !text-zinc-500 hover:!text-red-300" onClick={() => setConfirmDelete(true)} aria-label="Supprimer mon avis">
+            <Button size="sm" variant="ghost" className="ml-auto !text-zinc-500 hover:!text-red-300" onClick={() => setConfirmDelete(true)} aria-label={t("rvDeleteMine")}>
               <FiTrash2 aria-hidden="true" /> Supprimer
             </Button>
           ))}
@@ -125,7 +128,7 @@ function ReviewItem({ review, depth, user, post, onDeleted }) {
 
       {replyOpen && (
         <ReplyForm
-          placeholder={`Répondre à ${review.user?.username || "cet avis"}`}
+          placeholder={t("rvReplyTo", { name: review.user?.username || t("rvThisReview") })}
           pending={isBusy("reply")}
           onSubmit={submitReply}
           onCancel={() => setReplyOpen(false)}
@@ -149,7 +152,7 @@ function ReviewItem({ review, depth, user, post, onDeleted }) {
           ))}
           {nextCursor && (
             <li className="mt-2">
-              <Button size="sm" variant="ghost" pending={isBusy("load")} onClick={() => loadReplies(nextCursor)}>Voir plus de réponses</Button>
+              <Button size="sm" variant="ghost" pending={isBusy("load")} onClick={() => loadReplies(nextCursor)}>{t("rvMoreReplies")}</Button>
             </li>
           )}
         </ul>
@@ -160,6 +163,7 @@ function ReviewItem({ review, depth, user, post, onDeleted }) {
 
 export default function ReviewSection({ tmdbId, type, title, posterPath, user, onAverageChange }) {
   const toast = useToast();
+  const t = useT();
   const { isBusy, run } = useBusy();
   const [reviews, setReviews] = useState(null);
   const [error, setError] = useState(false);
@@ -195,17 +199,17 @@ export default function ReviewSection({ tmdbId, type, title, posterPath, user, o
 
   const submitReview = (e) => {
     e.preventDefault();
-    if (!rating) return toast("Choisis une note de 1 à 5", "error");
-    if (!comment.trim()) return toast("Écris ton avis avant de le publier", "error");
+    if (!rating) return toast(t("rvPickRating"), "error");
+    if (!comment.trim()) return toast(t("rvWriteFirst"), "error");
     return run("review", async () => {
       try {
         await post({ comment: comment.trim(), rating });
         setRating(0);
         setComment("");
-        toast("Avis publié", "success");
+        toast(t("rvPublished"), "success");
         await load();
       } catch (err) {
-        toast(errorMessage(err, "Impossible de publier l'avis"), "error");
+        toast(errorMessage(err, t("rvPublishFail")), "error");
       }
     });
   };
@@ -218,7 +222,7 @@ export default function ReviewSection({ tmdbId, type, title, posterPath, user, o
   return (
     <section aria-labelledby="avis-titre">
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <h2 id="avis-titre" className="text-2xl font-bold">Avis</h2>
+        <h2 id="avis-titre" className="text-2xl font-bold">{t("rvTitle")}</h2>
         {avg != null && (
           <span className="chip !border-amber-400/30 !text-amber-300">★ {avg.toFixed(1)} / 5 · FlixMatch</span>
         )}
@@ -227,28 +231,28 @@ export default function ReviewSection({ tmdbId, type, title, posterPath, user, o
       {user ? (
         <form onSubmit={submitReview} className="surface mb-6 space-y-3 p-4 sm:p-5">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="text-sm font-medium text-zinc-300">Ta note</span>
-            <StarRating value={rating} onChange={setRating} label="Ta note" />
+            <span className="text-sm font-medium text-zinc-300">{t("rvYourRating")}</span>
+            <StarRating value={rating} onChange={setRating} label={t("rvYourRating")} />
           </div>
-          <label className="sr-only" htmlFor="nouvel-avis">Ton avis</label>
-          <textarea id="nouvel-avis" rows={3} maxLength={2000} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Partage ton avis sur ce titre…" className="field resize-y" />
-          <Button type="submit" variant="primary" pending={isBusy("review")} pendingLabel="Publication…">Publier mon avis</Button>
+          <label className="sr-only" htmlFor="nouvel-avis">{t("rvYourReview")}</label>
+          <textarea id="nouvel-avis" rows={3} maxLength={2000} value={comment} onChange={(e) => setComment(e.target.value)} placeholder={t("rvPlaceholder")} className="field resize-y" />
+          <Button type="submit" variant="primary" pending={isBusy("review")} pendingLabel={t("rvPublishing")}>{t("rvPublishBtn")}</Button>
         </form>
       ) : (
         <p className="surface mb-6 p-4 text-sm text-zinc-300">
-          <Link to="/login" className="font-semibold text-brand-300 hover:underline">Connecte-toi</Link> pour publier un avis ou répondre aux autres.
+          <Link to="/login" className="font-semibold text-brand-300 hover:underline">{t("rvLogin")}</Link>{t("rvLoginPost")}
         </p>
       )}
 
       {error ? (
-        <ErrorState message="Impossible de charger les avis." onRetry={load} />
+        <ErrorState message={t("rvLoadFail")} onRetry={load} />
       ) : !reviews ? (
-        <div className="space-y-3" role="status" aria-label="Chargement des avis">
+        <div className="space-y-3" role="status" aria-label={t("rvLoadingAria")}>
           <div className="skeleton h-24 w-full" />
           <div className="skeleton h-24 w-full" />
         </div>
       ) : reviews.length === 0 ? (
-        <p className="py-6 text-center text-zinc-400">Aucun avis pour le moment. Sois le premier !</p>
+        <p className="py-6 text-center text-zinc-400">{t("rvNone")}</p>
       ) : (
         <ul className="space-y-4">
           {reviews.map((review) => (

@@ -7,7 +7,7 @@ import AuthCard, { FormField } from "../components/AuthCard";
 import UsernameField from "../components/UsernameField";
 import { Button } from "../components/ui";
 import { useToast } from "../toastContext";
-import { useT } from "%s";
+import { useT } from "../i18n";
 import { errorMessage } from "../utils";
 
 const Register = () => {

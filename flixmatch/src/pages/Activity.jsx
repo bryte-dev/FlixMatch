@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
-import { useT } from "%s";
+import { useT } from "../i18n";
 import Avatar from "../components/Avatar";
 import { EmptyState, ErrorState, PageHeader, Spinner } from "../components/ui";
 import { formatDate } from "../utils";

@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { FiRotateCcw } from "react-icons/fi";
 import { API_URL } from "../api";
 import { useToast } from "../toastContext";
-import { useT } from "%s";
+import { useT } from "../i18n";
 import useBusy from "../hooks/useBusy";
 import useLibrary, { useEpisodeCounts } from "../hooks/useLibrary";
 import LibraryView from "../components/LibraryView";
