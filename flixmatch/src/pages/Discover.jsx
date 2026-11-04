@@ -15,6 +15,7 @@ import { errorMessage, mediaTitle, mediaYear, posterUrl } from "../utils";
 const keyOf = (item) => `${item.media_type}-${item.id}`;
 
 function WhereToWatch({ item, region, myProviders }) {
+  const t = useT();
   const [info, setInfo] = useState(null);
   useEffect(() => {
     let active = true;
@@ -30,7 +31,7 @@ function WhereToWatch({ item, region, myProviders }) {
 
   if (!info) return <div className="skeleton h-9 w-40" aria-hidden="true" />;
   if (info.flatrate.length === 0) {
-    return <p className="text-xs text-zinc-400">Pas de streaming par abonnement trouvé ({region}).</p>;
+    return <p className="text-xs text-zinc-400">{t("noStreamingFound", { region })}</p>;
   }
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -46,7 +47,7 @@ function WhereToWatch({ item, region, myProviders }) {
       ))}
       {info.link && (
         <a href={info.link} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-brand-300 underline">
-          Voir les offres
+          {t("seeOffers")}
         </a>
       )}
     </div>
@@ -186,15 +187,15 @@ export default function Discover() {
     try {
       const movieId = await addToLibrary(item, direction);
       setHistory((h) => [...h, { item, direction, movieId }]);
-      const label = direction === "left" ? (settings.swipeLeft === "junk" ? "mis à la corbeille" : "ignoré") : direction === "up" ? "marqué comme vu" : settings.swipeAction === "favorites" ? "ajouté aux favoris" : "ajouté à ta watchlist";
-      toast(`« ${mediaTitle(item)} » ${label}`, "success");
+      const label = direction === "left" ? (settings.swipeLeft === "junk" ? t("swipedTrash") : t("swipedIgnored")) : direction === "up" ? t("swipedSeen") : settings.swipeAction === "favorites" ? t("swipedFav") : t("swipedWatchlist");
+      toast(t("swipeToast", { title: mediaTitle(item), label }), "success");
     } catch (err) {
       setLibraryIds((prev) => {
         const copy = new Set(prev);
         copy.delete(item.id);
         return copy;
       });
-      toast(errorMessage(err, "Action impossible"), "error");
+      toast(errorMessage(err, t("actionFailed")), "error");
     }
   };
 
@@ -210,7 +211,7 @@ export default function Discover() {
       });
       setHistory((h) => h.slice(0, -1));
     } catch (err) {
-      toast(errorMessage(err, "Impossible d'annuler"), "error");
+      toast(errorMessage(err, t("undoFailed")), "error");
     }
   };
 
@@ -228,15 +229,15 @@ export default function Discover() {
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  const rightLabel = settings.swipeAction === "favorites" ? "Favoris" : "Watchlist";
+  const rightLabel = settings.swipeAction === "favorites" ? t("favorites") : t("watchlistBtn");
   const RightIcon = settings.swipeAction === "favorites" ? FiHeart : FiBookmark;
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 py-4">
       <div className="mb-3 flex items-center justify-between">
-        <h1 className="text-2xl font-extrabold">Découverte</h1>
+        <h1 className="text-2xl font-extrabold">{t("discover")}</h1>
         <div className="flex gap-2">
-          <Button size="sm" onClick={() => setSheet(true)} aria-label="Filtres"><FiSliders aria-hidden="true" /> Filtres</Button>
+          <Button size="sm" onClick={() => setSheet(true)} aria-label={t("filters")}><FiSliders aria-hidden="true" /> {t("filters")}</Button>
         </div>
       </div>
 
@@ -260,7 +261,7 @@ export default function Discover() {
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-4 pt-16 text-white">
                   <h2 className="text-xl font-bold leading-tight">{mediaTitle(top)}</h2>
                   <p className="mb-1 text-xs text-zinc-300">
-                    {[top.media_type === "tv" ? "Série" : "Film", mediaYear(top)].filter(Boolean).join(" · ")}
+                    {[top.media_type === "tv" ? t("tvShow") : t("movie"), mediaYear(top)].filter(Boolean).join(" · ")}
                   </p>
                   <p className="mb-2 line-clamp-2 text-xs text-zinc-300">{top.overview}</p>
                   <WhereToWatch item={top} region={settings.region} myProviders={settings.providers} />
@@ -269,44 +270,44 @@ export default function Discover() {
             </SwipeCard>
           </>
         ) : loading ? (
-          <div className="surface flex h-full items-center justify-center text-brand-400" role="status" aria-label="Chargement"><Spinner className="h-8 w-8" /></div>
+          <div className="surface flex h-full items-center justify-center text-brand-400" role="status" aria-label={t("loading")}><Spinner className="h-8 w-8" /></div>
         ) : error ? (
-          <ErrorState message="Impossible de charger des titres." onRetry={() => loadMore(Math.max(page + 1, 1))} />
+          <ErrorState message={t("discoverLoadError")} onRetry={() => loadMore(Math.max(page + 1, 1))} />
         ) : (
-          <EmptyState icon="🎉" title="Tu as tout vu !" text="Change les filtres pour découvrir d'autres titres." />
+          <EmptyState icon="🎉" title={t("discoverAllSeenTitle")} text={t("discoverAllSeenText")} />
         )}
       </div>
 
-      <div className="flex items-center justify-center gap-3" role="group" aria-label="Actions">
-        <Button onClick={undo} disabled={history.length === 0} aria-label="Annuler le dernier choix" title="Annuler (Z)"><FiRotateCcw aria-hidden="true" /></Button>
-        <Button variant="danger" onClick={() => cardRef.current?.trigger("left")} disabled={!top} aria-label="Ignorer (flèche gauche)"><FiX aria-hidden="true" /> Ignorer</Button>
-        <Button onClick={() => cardRef.current?.trigger("up")} disabled={!top} aria-label="Déjà vu (flèche haut)"><FiEye aria-hidden="true" /> Vu</Button>
-        <Button variant="primary" onClick={() => cardRef.current?.trigger("right")} disabled={!top} aria-label={`${rightLabel} (flèche droite)`}><RightIcon aria-hidden="true" /> {rightLabel}</Button>
+      <div className="flex items-center justify-center gap-3" role="group" aria-label={t("actionsGroup")}>
+        <Button onClick={undo} disabled={history.length === 0} aria-label={t("undoLast")} title={t("undoTitle")}><FiRotateCcw aria-hidden="true" /></Button>
+        <Button variant="danger" onClick={() => cardRef.current?.trigger("left")} disabled={!top} aria-label={t("ignoreAria")}><FiX aria-hidden="true" /> {t("ignore")}</Button>
+        <Button onClick={() => cardRef.current?.trigger("up")} disabled={!top} aria-label={t("seenAria")}><FiEye aria-hidden="true" /> {t("seenBtn")}</Button>
+        <Button variant="primary" onClick={() => cardRef.current?.trigger("right")} disabled={!top} aria-label={t("directionAria", { label: rightLabel })}><RightIcon aria-hidden="true" /> {rightLabel}</Button>
       </div>
       <p className="mt-3 text-center text-xs text-zinc-500">
-        ← ignorer · → {rightLabel.toLowerCase()} · ↑ déjà vu · Z annuler ·{" "}
-        <Link to="/settings" className="underline">changer l&apos;action</Link>
+        {t("discoverHint", { label: rightLabel.toLowerCase() })}{" "}
+        <Link to="/settings" className="underline">{t("changeAction")}</Link>
       </p>
 
-      <BottomSheet open={sheet} onClose={() => setSheet(false)} title="Filtres">
+      <BottomSheet open={sheet} onClose={() => setSheet(false)} title={t("filters")}>
         <div className="space-y-4">
-          <div className="flex gap-2" role="group" aria-label="Type">
-            {[["movie", "Films"], ["tv", "Séries"]].map(([value, label]) => (
+          <div className="flex gap-2" role="group" aria-label={t("typeLabel")}>
+            {[["movie", t("movies")], ["tv", t("seriesPlural")]].map(([value, label]) => (
               <Button key={value} variant={filters.type === value ? "primary" : "secondary"} className="flex-1" aria-pressed={filters.type === value} onClick={() => setFilters((f) => ({ ...f, type: value }))}>{label}</Button>
             ))}
           </div>
           <label className="block text-sm font-medium">
-            <span className="mb-1 block">Genre</span>
+            <span className="mb-1 block">{t("genre")}</span>
             <select className="field" value={filters.genre} onChange={(e) => setFilters((f) => ({ ...f, genre: e.target.value }))}>
-              <option value="">Tous les genres</option>
+              <option value="">{t("allGenres")}</option>
               {genres.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
           </label>
           <label className="flex items-center gap-3 text-sm">
             <input type="checkbox" className="h-5 w-5 accent-brand-500" checked={filters.onlyMine} disabled={settings.providers.length === 0} onChange={(e) => setFilters((f) => ({ ...f, onlyMine: e.target.checked }))} />
-            Seulement mes plateformes {settings.providers.length === 0 && <Link to="/settings" className="underline">(à choisir dans les paramètres)</Link>}
+            {t("onlyMyPlatforms")} {settings.providers.length === 0 && <Link to="/settings" className="underline">{t("chooseInSettings")}</Link>}
           </label>
-          <Button variant="primary" className="w-full" onClick={() => setSheet(false)}>Appliquer</Button>
+          <Button variant="primary" className="w-full" onClick={() => setSheet(false)}>{t("apply")}</Button>
         </div>
       </BottomSheet>
     </div>

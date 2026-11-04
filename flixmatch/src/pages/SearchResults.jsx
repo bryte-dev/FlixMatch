@@ -4,28 +4,27 @@ import axios from "axios";
 import { track } from "../lib/analytics";
 import { API_URL } from "../api";
 import { useSettings } from "../settings";
+import { useT } from "%s";
 import { resultKey } from "../lib/searchMerge";
 import MediaCard from "../components/MediaCard";
 import { EmptyState, ErrorState, GridSkeleton, InfiniteSentinel, MediaGrid, PageHeader, Spinner, Tabs } from "../components/ui";
 import { mediaTitle, mediaYear, posterUrl } from "../utils";
 
-const TABS = [["all", "Tout"], ["movie", "Films"], ["tv", "Séries"], ["person", "Personnes"]];
-
-const cardProps = (item) => {
+const cardProps = (item, t) => {
   if (item.media_type === "person") {
     const work = (item.known_for || [])[0];
     return {
       to: work ? `/${work.media_type}/${work.id}` : "/",
       title: item.name,
       poster: posterUrl(item.profile_path),
-      subtitle: (item.known_for || []).map(mediaTitle).slice(0, 2).join(", ") || item.known_for_department || "Personne",
+      subtitle: (item.known_for || []).map(mediaTitle).slice(0, 2).join(", ") || item.known_for_department || t("person"),
     };
   }
   return {
     to: `/${item.media_type}/${item.id}`,
     title: mediaTitle(item),
     poster: posterUrl(item.poster_path),
-    subtitle: [item.media_type === "tv" ? "Série" : "Film", mediaYear(item)].filter(Boolean).join(" · "),
+    subtitle: [item.media_type === "tv" ? t("tvShow") : t("movie"), mediaYear(item)].filter(Boolean).join(" · "),
     ratings: { tmdb: item.vote_average, tmdbVotes: item.vote_count },
   };
 };
@@ -33,6 +32,7 @@ const cardProps = (item) => {
 const SearchResults = () => {
   const { query } = useParams();
   const { metaLang } = useSettings();
+  const t = useT();
   const [tab, setTab] = useState("all");
   const [results, setResults] = useState([]);
   const [page, setPage] = useState(0);
@@ -88,24 +88,24 @@ const SearchResults = () => {
 
   return (
     <div className="page">
-      <PageHeader title="Résultats de recherche" subtitle={query ? `Pour « ${query} » (toutes langues)` : ""} />
-      {query && <Tabs tabs={TABS} value={tab} onChange={setTab} label="Type de résultats" />}
+      <PageHeader title={t("searchResultsTitle")} subtitle={query ? t("searchFor", { q: query }) : ""} />
+      {query && <Tabs tabs={[["all", t("tabAll")], ["movie", t("movies")], ["tv", t("seriesPlural")], ["person", t("people")]]} value={tab} onChange={setTab} label={t("resultTypeLabel")} />}
       {!query ? (
-        <EmptyState icon="🔎" title="Que cherches-tu ?" text="Utilise la barre de recherche en haut de page." />
+        <EmptyState icon="🔎" title={t("searchPromptTitle")} text={t("searchPromptText")} />
       ) : loading && results.length === 0 ? (
         <GridSkeleton />
       ) : error && results.length === 0 ? (
-        <ErrorState message="La recherche a échoué." onRetry={() => fetchPage(1)} />
+        <ErrorState message={t("searchFailed")} onRetry={() => fetchPage(1)} />
       ) : results.length === 0 ? (
-        <EmptyState icon="🤷" title="Aucun résultat" text="Essaie avec un autre titre ou une autre orthographe." actionTo="/advanced-search" actionLabel="Recherche avancée" />
+        <EmptyState icon="🤷" title={t("noResults")} text={t("noResultsText")} actionTo="/advanced-search" actionLabel={t("advancedSearch")} />
       ) : (
         <>
           <MediaGrid>
             {results.map((item) => (
-              <MediaCard key={resultKey(item)} {...cardProps(item)} />
+              <MediaCard key={resultKey(item)} {...cardProps(item, t)} />
             ))}
           </MediaGrid>
-          {loading && <div className="mt-6 flex justify-center text-brand-400" role="status" aria-label="Chargement"><Spinner className="h-7 w-7" /></div>}
+          {loading && <div className="mt-6 flex justify-center text-brand-400" role="status" aria-label={t("loading")}><Spinner className="h-7 w-7" /></div>}
           <InfiniteSentinel disabled={!hasMore || loading} onVisible={() => fetchPage(page + 1)} />
         </>
       )}

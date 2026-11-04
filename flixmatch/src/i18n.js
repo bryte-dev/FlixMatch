@@ -11,5 +11,5 @@ export function useT() {
     document.documentElement.lang = uiLang;
     document.documentElement.dir = RTL.has(uiLang) ? "rtl" : "ltr";
   }, [uiLang]);
-  return (key) => translate(uiLang, key);
+  return (key, params) => translate(uiLang, key, params);
 }

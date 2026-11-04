@@ -5,6 +5,7 @@ import { FiBookmark, FiCheck, FiPlus } from "react-icons/fi";
 import { API_URL } from "../api";
 import { AuthContext } from "../AuthContext";
 import { useToast } from "../toastContext";
+import { useT } from "%s";
 import useBusy from "../hooks/useBusy";
 import MediaCard from "../components/MediaCard";
 import { Button, EmptyState, ErrorState, GridSkeleton, MediaGrid, Spinner } from "../components/ui";
@@ -13,6 +14,7 @@ import { errorMessage, mediaTitle, mediaYear, posterUrl } from "../utils";
 function Home() {
   const { user } = useContext(AuthContext);
   const toast = useToast();
+  const t = useT();
   const { isBusy, run } = useBusy();
 
   const [items, setItems] = useState([]);
@@ -63,9 +65,9 @@ function Home() {
           poster_path: item.poster_path || "",
         });
         setLibraryIds((prev) => new Set(prev).add(item.id));
-        toast(`« ${mediaTitle(item)} » ajouté à ta watchlist`, "success");
+        toast(t("addedToWatchlistToast", { title: mediaTitle(item) }), "success");
       } catch (err) {
-        toast(errorMessage(err, "Impossible d'ajouter à la watchlist"), "error");
+        toast(errorMessage(err, t("addWatchlistFail")), "error");
       }
     });
 
@@ -74,30 +76,30 @@ function Home() {
       <section className="relative mb-10 overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-brand-700/40 via-ink-800 to-ink-900 px-6 py-12 sm:px-12 sm:py-16">
         <div className="pointer-events-none absolute -right-20 -top-20 h-72 w-72 rounded-full bg-brand-500/20 blur-3xl" />
         <div className="relative max-w-2xl">
-          <p className="mb-3 text-sm font-semibold uppercase tracking-widest text-brand-300">Films &amp; séries</p>
+          <p className="mb-3 text-sm font-semibold uppercase tracking-widest text-brand-300">{t("homeKicker")}</p>
           <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl">
-            Trouve ton prochain <span className="bg-gradient-to-r from-brand-300 to-brand-500 bg-clip-text text-transparent">coup de cœur</span>
+            {t("homeHeroA")}<span className="bg-gradient-to-r from-brand-300 to-brand-500 bg-clip-text text-transparent">{t("homeHeroB")}</span>
           </h1>
           <p className="mt-4 text-lg text-zinc-300">
-            Explore les tendances du moment, garde ta watchlist, note ce que tu as vu et suis tes séries épisode par épisode.
+            {t("homeHeroText")}
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link to="/advanced-search" className="btn btn-primary">Explorer par filtres</Link>
+            <Link to="/advanced-search" className="btn btn-primary">{t("homeExplore")}</Link>
             {user ? (
-              <Link to="/watchlist" className="btn btn-secondary"><FiBookmark aria-hidden="true" /> Ma watchlist</Link>
+              <Link to="/watchlist" className="btn btn-secondary"><FiBookmark aria-hidden="true" /> {t("homeMyWatchlist")}</Link>
             ) : (
-              <Link to="/register" className="btn btn-secondary">Créer un compte gratuit</Link>
+              <Link to="/register" className="btn btn-secondary">{t("homeCreateAccount")}</Link>
             )}
           </div>
         </div>
       </section>
 
-      <h2 className="mb-5 text-2xl font-bold">Tendances du moment</h2>
+      <h2 className="mb-5 text-2xl font-bold">{t("homeTrending")}</h2>
 
       {error && items.length === 0 ? (
-        <ErrorState message="Impossible de charger les tendances." onRetry={() => fetchTrending(page)} />
+        <ErrorState message={t("trendingError")} onRetry={() => fetchTrending(page)} />
       ) : items.length === 0 && !loading ? (
-        <EmptyState title="Rien à afficher" text="Aucune tendance disponible pour le moment." />
+        <EmptyState title={t("nothingToShow")} text={t("noTrending")} />
       ) : (
         <>
           <MediaGrid>
@@ -109,7 +111,7 @@ function Home() {
                   to={`/${item.media_type}/${item.id}`}
                   title={mediaTitle(item)}
                   poster={posterUrl(item.poster_path)}
-                  subtitle={[item.media_type === "tv" ? "Série" : "Film", mediaYear(item)].filter(Boolean).join(" · ")}
+                  subtitle={[item.media_type === "tv" ? t("tvShow") : t("movie"), mediaYear(item)].filter(Boolean).join(" · ")}
                   ratings={{ tmdb: item.vote_average, tmdbVotes: item.vote_count }}
                 >
                   {user && (
@@ -119,11 +121,11 @@ function Home() {
                       className="w-full"
                       disabled={inLibrary}
                       pending={isBusy(item.id)}
-                      pendingLabel="Ajout…"
+                      pendingLabel={t("adding")}
                       onClick={() => addToWatchlist(item)}
-                      aria-label={inLibrary ? `${mediaTitle(item)} est déjà dans ta bibliothèque` : `Ajouter ${mediaTitle(item)} à la watchlist`}
+                      aria-label={inLibrary ? t("alreadyInLibraryAria", { title: mediaTitle(item) }) : t("addToWatchlistAria", { title: mediaTitle(item) })}
                     >
-                      {inLibrary ? <><FiCheck aria-hidden="true" /> Dans ma liste</> : <><FiPlus aria-hidden="true" /> Watchlist</>}
+                      {inLibrary ? <><FiCheck aria-hidden="true" /> {t("inMyList")}</> : <><FiPlus aria-hidden="true" /> {t("watchlistBtn")}</>}
                     </Button>
                   )}
                 </MediaCard>
@@ -132,15 +134,15 @@ function Home() {
           </MediaGrid>
 
           {loading && items.length > 0 && (
-            <div className="mt-8 flex justify-center text-brand-400" role="status" aria-label="Chargement"><Spinner className="h-7 w-7" /></div>
+            <div className="mt-8 flex justify-center text-brand-400" role="status" aria-label={t("loading")}><Spinner className="h-7 w-7" /></div>
           )}
           {loading && items.length === 0 && <GridSkeleton />}
           {error && items.length > 0 && (
-            <p className="mt-6 text-center text-sm text-zinc-400" role="alert">Le chargement de la suite a échoué.</p>
+            <p className="mt-6 text-center text-sm text-zinc-400" role="alert">{t("loadMoreFailed")}</p>
           )}
           {items.length > 0 && !loading && (
             <div className="mt-8 flex justify-center">
-              <Button onClick={() => (error ? fetchTrending(page) : setPage((p) => p + 1))}>{error ? "Réessayer" : "Voir plus de titres"}</Button>
+              <Button onClick={() => (error ? fetchTrending(page) : setPage((p) => p + 1))}>{error ? t("retry") : t("seeMoreTitles")}</Button>
             </div>
           )}
         </>

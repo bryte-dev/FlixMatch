@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { FiRotateCcw } from "react-icons/fi";
 import { API_URL } from "../api";
 import { useToast } from "../toastContext";
+import { useT } from "%s";
 import useBusy from "../hooks/useBusy";
 import useLibrary, { useEpisodeCounts } from "../hooks/useLibrary";
 import LibraryView from "../components/LibraryView";
@@ -16,6 +17,7 @@ function Seen() {
   const paging = useIncremental(library.entries);
   const episodeCounts = useEpisodeCounts();
   const toast = useToast();
+  const t = useT();
   const { isBusy, run } = useBusy();
   const [drafts, setDrafts] = useState({});
   const [openForm, setOpenForm] = useState(null);
@@ -30,7 +32,7 @@ function Seen() {
         library.patchEntry(movie.id, { rating });
         toast("Note enregistrée", "success");
       } catch (err) {
-        toast(errorMessage(err, "Impossible d'enregistrer la note"), "error");
+        toast(errorMessage(err, t("rateSaveFail")), "error");
       }
     });
 
@@ -46,7 +48,7 @@ function Seen() {
         setOpenForm(null);
         toast("Avis publié — retrouve-le sur la fiche du titre", "success");
       } catch (err) {
-        toast(errorMessage(err, "Impossible de publier l'avis"), "error");
+        toast(errorMessage(err, t("reviewPublishFail")), "error");
       }
     });
   };
@@ -56,22 +58,22 @@ function Seen() {
       try {
         await axios.put(`${API_URL}/seen/${movie.id}/remove`);
         library.removeEntry(movie.id);
-        toast(`« ${movie.title} » remis dans ta watchlist`, "success");
+        toast(t("restoredToWatchlistToast", { title: movie.title }), "success");
       } catch (err) {
-        toast(errorMessage(err, "Impossible de remettre en watchlist"), "error");
+        toast(errorMessage(err, t("restoreToWatchlistFail")), "error");
       }
     });
 
   return (
     <LibraryView
-      title="Déjà vus"
+      title={t("seenTitle")}
       library={library}
       empty={{
         icon: "👀",
-        title: "Rien de vu pour l'instant",
-        text: "Marque des titres comme vus depuis ta watchlist pour les noter et laisser un avis.",
+        title: t("seenEmptyTitle"),
+        text: t("seenEmptyText"),
         actionTo: "/watchlist",
-        actionLabel: "Ouvrir ma watchlist",
+        actionLabel: t("openWatchlist"),
       }}
     >
       <ul className="grid gap-4 lg:grid-cols-2">
@@ -97,14 +99,14 @@ function Seen() {
                   </h2>
                   <p className="text-xs text-zinc-400">
                     {movie.media_type === "tv"
-                      ? `Série${watched ? ` · ${watched} épisode${watched > 1 ? "s" : ""} vu${watched > 1 ? "s" : ""}` : ""}`
-                      : "Film"}
+                      ? `${t("tvShow")}${watched ? ` · ${t(watched > 1 ? "epSeenMany" : "epSeenOne", { n: watched })}` : ""}`
+                      : t("movie")}
                   </p>
                 </div>
 
                 <div>
-                  <p className="mb-1 text-xs uppercase tracking-wide text-zinc-500">Ma note</p>
-                  <StarRating value={entry.rating || 0} onChange={(r) => rate(movie, r)} pending={isBusy(`rate-${movie.id}`)} label="Ma note" />
+                  <p className="mb-1 text-xs uppercase tracking-wide text-zinc-500">{t("myRating")}</p>
+                  <StarRating value={entry.rating || 0} onChange={(r) => rate(movie, r)} pending={isBusy(`rate-${movie.id}`)} label={t("myRating")} />
                 </div>
 
                 {openForm === movie.id ? (
@@ -115,27 +117,27 @@ function Seen() {
                       submitReview(movie);
                     }}
                   >
-                    <StarRating value={draft.rating} onChange={(rating) => setDraft(movie.id, { rating })} label="Note de l'avis" />
-                    <label className="sr-only" htmlFor={`comment-${movie.id}`}>Ton avis sur {movie.title}</label>
+                    <StarRating value={draft.rating} onChange={(rating) => setDraft(movie.id, { rating })} label={t("reviewRatingLabel")} />
+                    <label className="sr-only" htmlFor={`comment-${movie.id}`}>{t("yourReviewOn", { title: movie.title })}</label>
                     <textarea
                       id={`comment-${movie.id}`}
                       rows={3}
                       maxLength={2000}
                       value={draft.comment}
                       onChange={(e) => setDraft(movie.id, { comment: e.target.value })}
-                      placeholder="Ton avis…"
+                      placeholder={t("yourReviewPh")}
                       className="field resize-y"
                     />
                     <div className="flex gap-2">
-                      <Button type="submit" variant="primary" size="sm" pending={isBusy(`review-${movie.id}`)} pendingLabel="Publication…">
-                        Publier
+                      <Button type="submit" variant="primary" size="sm" pending={isBusy(`review-${movie.id}`)} pendingLabel={t("publishing")}>
+                        {t("publish")}
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setOpenForm(null)}>Annuler</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setOpenForm(null)}>{t("cancel")}</Button>
                     </div>
                   </form>
                 ) : (
                   <div className="mt-auto flex flex-wrap gap-2">
-                    <Button size="sm" onClick={() => setOpenForm(movie.id)}>Écrire un avis</Button>
+                    <Button size="sm" onClick={() => setOpenForm(movie.id)}>{t("writeReview")}</Button>
                     <Button
                       size="sm"
                       variant="ghost"
@@ -143,7 +145,7 @@ function Seen() {
                       pendingLabel="…"
                       onClick={() => restore(movie)}
                     >
-                      <FiRotateCcw aria-hidden="true" /> Remettre en watchlist
+                      <FiRotateCcw aria-hidden="true" /> {t("backToWatchlist")}
                     </Button>
                   </div>
                 )}
