@@ -891,6 +891,12 @@ Frontend variables must be available to Vite at build time: after adding or chan
 
 Analytics are privacy-first: no cookies or local storage (in-memory persistence), no session recording or autocapture, no external scripts, internal user ids only (never emails), cleaned URLs, Do Not Track respected, and an opt-out switch in Settings. Analytics failures are silent and never affect the app.
 
+### FlixMatch Pro fake-door (beta)
+
+Everything is free during the beta. Pro entry points (Movie Night room creation after 3 rooms in 24 h, the "Sur mes plateformes" search filter, the Settings section) open a modal announcing the future ~$3.99/month price, then let the user continue. No payment is integrated. Set `VITE_PRO_FAKE_DOOR=false` at build time to disable the modals.
+
+PostHog events: `intent_to_purchase_pro` (`feature`, `source`, `stage` = `entry` | `continue`, `price_usd`, `beta`), `pro_modal_dismissed`, `movie_night_created`, `movie_night_joined`, `movie_night_started`, `movie_night_match`, `movie_night_completed`, plus the existing search / watchlist / page view events.
+
 ---
 
 ## Installation

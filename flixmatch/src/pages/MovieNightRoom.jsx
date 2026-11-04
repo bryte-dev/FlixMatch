@@ -5,6 +5,7 @@ import { FiCheck, FiHeart, FiLink, FiX } from "react-icons/fi";
 import { useToast } from "../toastContext";
 import { useSettings } from "../settings";
 import { DICT, useT } from "../i18n";
+import { track } from "../lib/analytics";
 import useNightRoom from "../hooks/useNightRoom";
 import { normalizeCode } from "../lib/night";
 import Avatar from "../components/Avatar";
@@ -133,6 +134,7 @@ export default function MovieNightRoom() {
     const key = cardKey(card);
     if (celebrated.current.has(key)) return;
     celebrated.current.add(key);
+    track("movie_night_match", { media_type: card.mediaType, tmdb_id: card.tmdbId });
     setCelebration(card);
   }, []);
 
@@ -143,10 +145,23 @@ export default function MovieNightRoom() {
     state?.matches?.forEach((m) => celebrated.current.add(cardKey(m)));
   }, [state?.member, state?.room?.code]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Une partie terminée est comptée une fois par participant, seulement si on l'a vue se terminer
+  const lastStatus = useRef(null);
+  const status = state?.room?.status;
+  useEffect(() => {
+    if (!state?.member) return;
+    if (status === "ENDED" && lastStatus.current && lastStatus.current !== "ENDED") {
+      track("movie_night_completed", { players: state.members.length, matches: state.matches.length, cards: state.room.total, media_type: state.room.mediaType });
+    }
+    lastStatus.current = status;
+  }, [status]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const act = async (path, body, errorKey) => {
     setBusy(true);
     try {
       await axios.post(`/night/${code}/${path}`, body);
+      if (path === "start") track("movie_night_started", { players: state.members.length, media_type: state.room.mediaType, is_host: true });
+      if (path === "join") track("movie_night_joined", { players_before: state.room.members });
       await reload();
     } catch (err) {
       const reason = err.response?.data?.reason;

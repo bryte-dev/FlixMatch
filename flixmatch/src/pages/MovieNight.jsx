@@ -1,9 +1,14 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { useToast } from "../toastContext";
 import { useT } from "../i18n";
 import { normalizeCode } from "../lib/night";
+import { track } from "../lib/analytics";
+import { FREE_NIGHT_ROOMS_PER_DAY, roomsCreatedToday } from "../lib/pro";
+import { usePro } from "../proContext";
+import { AuthContext } from "../AuthContext";
+import ProBadge from "../components/ProBadge";
 import { Button, PageHeader, Tabs } from "../components/ui";
 import { errorMessage } from "../utils";
 
@@ -13,6 +18,8 @@ export default function MovieNight() {
   const t = useT();
   const toast = useToast();
   const navigate = useNavigate();
+  const { user } = useContext(AuthContext);
+  const { openPro } = usePro();
   const [mediaType, setMediaType] = useState("movie");
   const [codeInput, setCodeInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -22,16 +29,22 @@ export default function MovieNight() {
     axios.get("/night").then((r) => setRecent(r.data)).catch(() => {});
   }, []);
 
-  const create = async () => {
+  const overFreeLimit = roomsCreatedToday(recent, user?.id) >= FREE_NIGHT_ROOMS_PER_DAY;
+
+  const doCreate = async () => {
     setBusy(true);
     try {
       const { data } = await axios.post("/night", { mediaType });
+      track("movie_night_created", { media_type: mediaType, rooms_today: roomsCreatedToday(recent, user?.id) + 1 });
       navigate(`/movie-night/${data.code}`);
     } catch (err) {
       toast(errorMessage(err, t("nightNotFound")), "error");
       setBusy(false);
     }
   };
+
+  // Au-delà du quota gratuit « théorique », la création reste possible : l'entrée Pro mesure l'intérêt
+  const create = () => (overFreeLimit ? openPro("night_rooms", { source: "movie_night_create", onContinue: doCreate }) : doCreate());
 
   const join = (e) => {
     e.preventDefault();
@@ -47,7 +60,7 @@ export default function MovieNight() {
         <section className="surface p-5">
           <h2 className="mb-3 text-lg font-bold">{t("nightCreate")}</h2>
           <Tabs tabs={[["movie", t("nightMovies")], ["tv", t("nightSeries")]]} value={mediaType} onChange={setMediaType} label={t("nightCreate")} />
-          <Button variant="primary" pending={busy} onClick={create} className="w-full">{t("nightCreate")}</Button>
+          <Button variant="primary" pending={busy} onClick={create} className="w-full">{t("nightCreate")}{overFreeLimit && <ProBadge feature="night_rooms" source="movie_night_create" className="ml-2" />}</Button>
         </section>
         <form className="surface p-5" onSubmit={join}>
           <h2 className="mb-3 text-lg font-bold">{t("nightJoinTitle")}</h2>
