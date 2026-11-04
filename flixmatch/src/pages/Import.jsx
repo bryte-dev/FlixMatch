@@ -6,19 +6,20 @@ import { commitAll, needsReview, resolveAll } from "../lib/import/runner";
 import { BottomSheet, Button, PageHeader, Tabs } from "../components/ui";
 import { posterUrl } from "../utils";
 import { track } from "../lib/analytics";
+import { useT, tr } from "../i18n";
 
 const PAGE = 100;
 const MAX_FILE_BYTES = 200 * 1024 * 1024;
 
-const kindLabel = (k) => (k === "tv" ? "Série" : k === "movie" ? "Film" : "Type inconnu");
-const viaLabel = { tmdb: "ID TMDB", imdb: "ID IMDb", tvdb: "ID TVDB", title: "Titre" };
-const errorLabel = { tmdb_unavailable: "TMDB indisponible, réessaie plus tard", rate_limited: "TMDB saturé, réessaie plus tard", network: "Erreur réseau" };
+const kindKey = (k) => (k === "tv" ? "mdTv" : k === "movie" ? "mdMovie" : "imKindUnknown");
+const viaLabel = { tmdb: "ID TMDB", imdb: "ID IMDb", tvdb: "ID TVDB" };
+const errorKey = { tmdb_unavailable: "imErrTmdb", rate_limited: "imErrRate", network: "imErrNet" };
 
 async function readFiles(fileList) {
   const decoder = new TextDecoder();
   const files = [];
   for (const file of fileList) {
-    if (file.size > MAX_FILE_BYTES) throw new Error(`« ${file.name} » est trop volumineux.`);
+    if (file.size > MAX_FILE_BYTES) throw new Error(tr("imTooBig", { name: file.name }));
     const buffer = await file.arrayBuffer();
     if (/\.zip$/i.test(file.name)) {
       for (const entry of listZip(buffer)) {
@@ -44,42 +45,44 @@ function Progress({ progress, label }) {
 }
 
 function PreviewRow({ item, checked, onToggle }) {
+  const t = useT();
   const m = item.match;
   const poster = posterUrl(m?.poster, "w92");
   return (
     <li className="flex items-center gap-3 py-2">
       {m && (
-        <input type="checkbox" className="h-5 w-5 shrink-0" checked={checked} onChange={onToggle} aria-label={`Importer ${m.title}`} />
+        <input type="checkbox" className="h-5 w-5 shrink-0" checked={checked} onChange={onToggle} aria-label={t("imAria", { title: m.title })} />
       )}
       <div className="h-14 w-10 shrink-0 overflow-hidden rounded bg-white/5">
         {poster ? <img src={poster} alt="" loading="lazy" className="h-full w-full object-cover" /> : null}
       </div>
       <div className="min-w-0 flex-1 text-sm">
         <p className="truncate font-semibold" title={m?.title || item.title}>
-          {m ? m.title : item.title || "Sans titre"} {m?.year ? <span className="font-normal text-zinc-400">({m.year})</span> : null}
+          {m ? m.title : item.title || t("imUntitled")} {m?.year ? <span className="font-normal text-zinc-400">({m.year})</span> : null}
         </p>
         <p className="truncate text-xs text-zinc-400">
-          {kindLabel(m?.mediaType || item.kind)}
-          {m && item.title && item.title !== m.title ? ` · importé comme « ${item.title}${item.year ? ` (${item.year})` : ""} »` : ""}
+          {t(kindKey(m?.mediaType || item.kind))}
+          {m && item.title && item.title !== m.title ? ` · ${t("imAsTitle", { title: `${item.title}${item.year ? ` (${item.year})` : ""}` })}` : ""}
           {!m && item.year ? ` · ${item.year}` : ""}
-          {item.episodes?.length ? ` · ${item.episodes.length} épisode(s)` : ""}
+          {item.episodes?.length ? ` · ${t("imEps", { n: item.episodes.length })}` : ""}
           {item.rating ? ` · ${item.rating}★` : ""}
-          {item.favorite ? " · favori" : ""}
-          {item.status === "WATCHLIST" && item.kind !== "tv" ? " · à voir" : ""}
+          {item.favorite ? ` · ${t("mdFavorite").toLowerCase()}` : ""}
+          {item.status === "WATCHLIST" && item.kind !== "tv" ? ` · ${t("imToWatch")}` : ""}
         </p>
         {m && (
           <p className="text-xs text-zinc-500">
-            Trouvé via {viaLabel[m.via] || m.via}
-            {needsReview(item) ? <span className="ml-1 text-amber-400">· à vérifier</span> : null}
+            {t("imFoundVia", { via: viaLabel[m.via] || (m.via === "title" ? t("imViaTitle") : m.via) })}
+            {needsReview(item) ? <span className="ml-1 text-amber-400">· {t("imToCheck")}</span> : null}
           </p>
         )}
-        {!m && item.error && <p className="text-xs text-red-400">{errorLabel[item.error] || "Erreur"}</p>}
+        {!m && item.error && <p className="text-xs text-red-400">{t(errorKey[item.error] || "imErr")}</p>}
       </div>
     </li>
   );
 }
 
 export default function Import() {
+  const t = useT();
   const [source, setSource] = useState("auto");
   const [adapter, setAdapter] = useState(null);
   const [parsed, setParsed] = useState(null);
@@ -111,16 +114,16 @@ export default function Import() {
     reset();
     try {
       const files = await readFiles(list);
-      if (files.length === 0) throw new Error("Aucun fichier CSV ou JSON trouvé.");
+      if (files.length === 0) throw new Error(t("imNoFile"));
       const chosen = source === "auto" ? detectAdapter(files) : adapterById(source);
-      if (!chosen) throw new Error("Format non reconnu : choisis la source dans la liste.");
+      if (!chosen) throw new Error(t("imBadFormat"));
       const result = await chosen.parse(files);
-      if (result.items.length === 0) throw new Error(`Aucun film ni aucune série reconnus pour ${chosen.label}.`);
+      if (result.items.length === 0) throw new Error(t("imNoneRecognized", { label: chosen.label }));
       setAdapter(chosen);
       setParsed(result);
       track("import_file_parsed", { source: chosen.id, auto_detected: source === "auto", movies: result.stats.movies, series: result.stats.series, episodes: result.stats.episodes });
     } catch (err) {
-      setError(err.message || "Fichier illisible");
+      setError(err.message || t("imUnreadable"));
       track("import_parse_failed", { source });
     } finally {
       e.target.value = "";
@@ -140,7 +143,7 @@ export default function Import() {
       setShown(PAGE);
       setPhase("preview");
     } catch (err) {
-      setError(err.message || "Analyse impossible");
+      setError(err.message || t("imAnalyseFail"));
       setPhase("idle");
     } finally {
       setProgress(null);
@@ -159,7 +162,7 @@ export default function Import() {
       setPhase("done");
       track("import_completed", { source: adapter?.id, selected: chosen.length, created: result.created, updated: result.updated, episodes_added: result.episodesAdded, episodes_skipped: result.episodesSkipped, reviews: result.reviews, failed: result.failed.length, aborted: result.aborted });
     } catch (err) {
-      setError(err.message || "Import interrompu");
+      setError(err.message || t("imInterrupted"));
       setPhase("preview");
     } finally {
       setProgress(null);
@@ -186,61 +189,61 @@ export default function Import() {
 
   return (
     <div className="page max-w-2xl">
-      <PageHeader title="Importer mes données" subtitle="TV Time, Letterboxd, Trakt ou une sauvegarde FlixMatch. Les fichiers sont lus sur ton appareil." />
+      <PageHeader title={t("imTitle")} subtitle={t("imSubtitle")} />
       <section className="surface space-y-4 p-5">
-        <label className="block text-sm font-semibold" htmlFor="import-source">Source</label>
+        <label className="block text-sm font-semibold" htmlFor="import-source">{t("imSource")}</label>
         <select id="import-source" className="field" value={source} onChange={(e) => { setSource(e.target.value); setAdapter(null); reset(); }} disabled={busy}>
-          <option value="auto">Détection automatique</option>
+          <option value="auto">{t("imAuto")}</option>
           {ADAPTERS.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
         </select>
         <p className="text-sm text-zinc-400">
-          {current ? current.hint : "Dépose le ZIP ou les fichiers CSV/JSON exportés depuis ton ancien service : le format est reconnu automatiquement."}
+          {current ? current.hint : t("imDefaultHint")}
         </p>
-        <input type="file" multiple accept=".zip,.csv,.json,application/zip,text/csv,application/json" onChange={onFiles} className="field" aria-label="Fichiers d'export" disabled={busy} />
+        <input type="file" multiple accept=".zip,.csv,.json,application/zip,text/csv,application/json" onChange={onFiles} className="field" aria-label={t("imFilesAria")} disabled={busy} />
         {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
 
         {parsed && phase === "idle" && (
           <div className="space-y-3">
             <p className="font-semibold">
-              {adapter?.label} : {s.series} série(s), {s.episodes} épisode(s) vu(s), {s.movies} film(s)
-              {s.unknown ? `, ${s.unknown} titre(s) de type inconnu` : ""}
+              {t("imSummary", { label: adapter?.label, series: s.series, episodes: s.episodes, movies: s.movies })}
+              {s.unknown ? ` · ${t("imUnknownTitles", { n: s.unknown })}` : ""}
             </p>
             <p className="text-sm text-zinc-400">
-              {s.watchlist} à voir · {s.favorites} favori(s) · {s.ratings} note(s) · {s.reviews} avis
+              {t("imSummary2", { watchlist: s.watchlist, favorites: s.favorites, ratings: s.ratings, reviews: s.reviews })}
             </p>
-            <Button variant="primary" className="w-full sm:w-auto" onClick={analyse}>Rechercher les correspondances</Button>
-            <p className="text-xs text-zinc-500">Rien n&apos;est enregistré avant ta confirmation.</p>
+            <Button variant="primary" className="w-full sm:w-auto" onClick={analyse}>{t("imSearchMatches")}</Button>
+            <p className="text-xs text-zinc-500">{t("imNothingSaved")}</p>
           </div>
         )}
 
         {phase === "resolving" && (
           <div className="space-y-2">
-            <Progress progress={progress} label="Correspondances TMDB" />
-            <Button variant="ghost" onClick={() => abort.current?.abort()}>Arrêter</Button>
+            <Progress progress={progress} label={t("imTmdbProgress")} />
+            <Button variant="ghost" onClick={() => abort.current?.abort()}>{t("imStop")}</Button>
           </div>
         )}
       </section>
 
       {resolved && (phase === "preview" || phase === "committing") && (
         <section className="surface mt-5 space-y-3 p-5">
-          <h2 className="text-lg font-bold">Aperçu avant import</h2>
+          <h2 className="text-lg font-bold">{t("imPreview")}</h2>
           <p className="text-sm text-zinc-300">
-            {matched.length} trouvé(s), {unmatched.length} introuvable(s). Décoche ce qui ne correspond pas.
+            {t("imFoundCounts", { matched: matched.length, unmatched: unmatched.length })}
           </p>
           <Tabs
-            label="Aperçu de l'import"
+            label={t("imPreviewLabel")}
             value={tab}
             onChange={(id) => { setTab(id); setShown(PAGE); }}
-            tabs={[["matched", `Trouvés (${matched.length})`], ["review", `À vérifier (${toReview.length})`], ["unmatched", `Introuvables (${unmatched.length})`]]}
+            tabs={[["matched", t("imTabMatched", { n: matched.length })], ["review", t("imTabReview", { n: toReview.length })], ["unmatched", t("imTabUnmatched", { n: unmatched.length })]]}
           />
           {tab !== "unmatched" && matched.length > 0 && (
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="secondary" onClick={() => setAll(true)} disabled={busy}>Tout cocher</Button>
-              <Button size="sm" variant="secondary" onClick={() => setAll(false)} disabled={busy}>Tout décocher</Button>
+              <Button size="sm" variant="secondary" onClick={() => setAll(true)} disabled={busy}>{t("imCheckAll")}</Button>
+              <Button size="sm" variant="secondary" onClick={() => setAll(false)} disabled={busy}>{t("imUncheckAll")}</Button>
             </div>
           )}
           {list.length === 0 ? (
-            <p className="text-sm text-zinc-400">Rien ici.</p>
+            <p className="text-sm text-zinc-400">{t("imNothingHere")}</p>
           ) : (
             <ul className="divide-y divide-white/5">
               {list.slice(0, shown).map((it) => (
@@ -249,67 +252,67 @@ export default function Import() {
             </ul>
           )}
           {list.length > shown && (
-            <Button variant="ghost" onClick={() => setShown((n) => n + PAGE)}>Afficher plus ({list.length - shown} restants)</Button>
+            <Button variant="ghost" onClick={() => setShown((n) => n + PAGE)}>{t("imShowMore", { n: list.length - shown })}</Button>
           )}
           {phase === "committing" ? (
             <div className="space-y-2">
-              <Progress progress={progress} label="Import" />
-              <Button variant="ghost" onClick={() => abort.current?.abort()}>Arrêter</Button>
+              <Progress progress={progress} label={t("imProgressImport")} />
+              <Button variant="ghost" onClick={() => abort.current?.abort()}>{t("imStop")}</Button>
             </div>
           ) : (
             <div className="flex flex-wrap gap-2">
               <Button variant="primary" onClick={() => setConfirmOpen(true)} disabled={selectedCount === 0}>
-                Importer {selectedCount} élément(s)
+                {t("imImportN", { n: selectedCount })}
               </Button>
-              <Button variant="ghost" onClick={reset}>Annuler</Button>
+              <Button variant="ghost" onClick={reset}>{t("cancel")}</Button>
             </div>
           )}
         </section>
       )}
 
-      <BottomSheet open={confirmOpen} onClose={() => setConfirmOpen(false)} title="Confirmer l'import">
+      <BottomSheet open={confirmOpen} onClose={() => setConfirmOpen(false)} title={t("imConfirmTitle")}>
         <div className="space-y-3 text-sm">
           <p>
-            {selectedCount} élément(s) vont être ajoutés ou complétés dans ta bibliothèque
-            {unmatched.length ? ` (${unmatched.length} introuvable(s) ignoré(s))` : ""}.
+            {t("imConfirmText", { n: selectedCount })}
+            {unmatched.length ? ` ${t("imConfirmIgnored", { n: unmatched.length })}` : ""}
           </p>
           <p className="text-zinc-400">
-            Ce qui existe déjà n&apos;est jamais dégradé : un titre vu reste vu, tes notes et avis actuels sont conservés. Tu peux relancer l&apos;import sans créer de doublons.
+            {t("imNeverDowngrade")}
           </p>
-          <Button variant="primary" className="w-full" onClick={confirmImport}>Confirmer l&apos;import</Button>
-          <Button variant="ghost" className="w-full" onClick={() => setConfirmOpen(false)}>Retour à l&apos;aperçu</Button>
+          <Button variant="primary" className="w-full" onClick={confirmImport}>{t("imConfirmBtn")}</Button>
+          <Button variant="ghost" className="w-full" onClick={() => setConfirmOpen(false)}>{t("imBackPreview")}</Button>
         </div>
       </BottomSheet>
 
       {report && phase === "done" && (
         <section className="surface mt-5 space-y-2 p-5 text-sm" aria-live="polite">
           <p className="font-semibold text-emerald-400">
-            {report.aborted ? "Import arrêté. " : "Import terminé. "}
-            {report.created} ajout(s), {report.updated} mise(s) à jour, {report.unchanged} déjà à jour.
+            {report.aborted ? t("imAborted") : t("imDone")}{" "}
+            {t("imReportCounts", { created: report.created, updated: report.updated, unchanged: report.unchanged })}
           </p>
           <p>
-            {report.episodesAdded} épisode(s) ajouté(s){report.reviews ? `, ${report.reviews} avis importé(s)` : ""}.
+            {t("imReportEps", { n: report.episodesAdded })}{report.reviews ? `, ${t("imReportReviews", { n: report.reviews })}` : ""}.
           </p>
           {report.episodesSkipped > 0 && (
             <p className="text-zinc-400">
-              {report.episodesSkipped} épisode(s) ignoré(s) : numérotation absente chez TMDB ou épisode non diffusé.
+              {t("imSkipped", { n: report.episodesSkipped })}
             </p>
           )}
           {report.failed.length > 0 && (
             <details>
-              <summary>{report.failed.length} erreur(s) : relance l&apos;import pour réessayer</summary>
+              <summary>{t("imFailedSummary", { n: report.failed.length })}</summary>
               <ul className="mt-2 list-disc pl-5 text-zinc-400">{report.failed.map((n, i) => <li key={`${n}-${i}`}>{n}</li>)}</ul>
             </details>
           )}
           {unmatched.length > 0 && (
             <details>
-              <summary>{unmatched.length} titre(s) introuvable(s) sur TMDB</summary>
-              <ul className="mt-2 list-disc pl-5 text-zinc-400">{unmatched.map((it) => <li key={it.key}>{it.title || "Sans titre"}{it.year ? ` (${it.year})` : ""}</li>)}</ul>
+              <summary>{t("imUnmatchedSummary", { n: unmatched.length })}</summary>
+              <ul className="mt-2 list-disc pl-5 text-zinc-400">{unmatched.map((it) => <li key={it.key}>{it.title || t("imUntitled")}{it.year ? ` (${it.year})` : ""}</li>)}</ul>
             </details>
           )}
           <div className="flex flex-wrap gap-2 pt-2">
-            <Link to="/watchlist" className="btn btn-primary">Voir ma bibliothèque</Link>
-            <Button variant="ghost" onClick={reset}>Nouvel import</Button>
+            <Link to="/watchlist" className="btn btn-primary">{t("imViewLibrary")}</Link>
+            <Button variant="ghost" onClick={reset}>{t("imNew")}</Button>
           </div>
         </section>
       )}

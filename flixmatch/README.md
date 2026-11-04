@@ -1237,3 +1237,16 @@ The “Tinder for Movies” aspect is currently more of a product concept than a
 - Temps réel via Server-Sent Events (`GET /night/:code/events`) + relecture de secours toutes les 15 s. Mono-instance : les flux sont gardés en mémoire (à revoir si Render passe à plusieurs instances).
 - Match quand tous les membres ont aimé le même titre ; le premier vote final déclenche la célébration chez tout le monde.
 - Tables : `NightRoom`, `NightMember`, `NightCard`, `NightSwipe` (migration `20261104180000_movie_night`).
+
+## Traductions (14 langues)
+
+L'interface est traduite en fr, en, es, de, it, pt, nl, pl, tr, ru, ja, ko, zh et ar (RTL).
+Les textes vivent dans `src/lib/i18nData.js` : toute nouvelle clé doit exister dans les 14 langues (`test/i18n.test.js`).
+
+- Composants : `const t = useT();` puis `t("clé", { n: 3 })` (les `{n}` sont interpolés).
+- Hors composant (libs, constantes) : `tr("clé", params)` de `src/i18n.js`.
+- Pluriels : clés séparées `…One` / `…Many`.
+- `test/i18n-usage.test.js` vérifie que chaque `t("clé")` utilisé existe en français.
+
+Les traductions sont de qualité « machine » : une relecture par des natifs est recommandée.
+Restent en français : les messages d'erreur renvoyés par le serveur et les libellés des adaptateurs d'import (`src/lib/import/*`).

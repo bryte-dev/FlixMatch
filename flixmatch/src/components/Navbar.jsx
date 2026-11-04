@@ -91,7 +91,7 @@ function Navbar() {
       taps.current.count = 0;
       unlockThemes();
       saveSettings({ theme: "neon" });
-      toast("🎉 Thèmes secrets débloqués ! Retrouve-les dans les paramètres.", "success");
+      toast(t("konamiToast"), "success");
     }
   };
 
@@ -107,9 +107,9 @@ function Navbar() {
       await logout();
       closeMenu();
       navigate("/");
-      toast("Tu es déconnecté.", "success");
+      toast(t("loggedOutToast"), "success");
     } catch {
-      toast("La déconnexion a échoué.", "error");
+      toast(t("logoutFail"), "error");
     } finally {
       setLoggingOut(false);
     }
