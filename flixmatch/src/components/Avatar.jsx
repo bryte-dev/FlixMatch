@@ -1,3 +1,4 @@
+import { tr } from "../i18n";
 export const PRESETS = {
   "popcorn": ["🍿", "#f43f5e"], "clap": ["🎬", "#8b5cf6"], "ghost": ["👻", "#06b6d4"], "robot": ["🤖", "#22c55e"],
   "alien": ["👽", "#eab308"], "cat": ["😺", "#f97316"], "star": ["⭐", "#ec4899"], "ticket": ["🎟️", "#3b82f6"],
@@ -27,7 +28,7 @@ export default function Avatar({ avatar, name, stats, size = 40, className = "" 
     inner = <img src={avatar} alt={`Avatar de ${name || "utilisateur"}`} width={size} height={size} className="h-full w-full object-cover" />;
   } else if (avatar?.startsWith("preset:") && PRESETS[avatar.slice(7)]) {
     const [emoji, color] = PRESETS[avatar.slice(7)];
-    inner = <span role="img" aria-label="Avatar" className="flex h-full w-full items-center justify-center" style={{ background: color, fontSize: size * 0.55 }}>{emoji}</span>;
+    inner = <span role="img" aria-label={tr("avatarAlt")} className="flex h-full w-full items-center justify-center" style={{ background: color, fontSize: size * 0.55 }}>{emoji}</span>;
   } else {
     inner = <Generated name={name} stats={stats} size={size} />;
   }
@@ -49,7 +50,7 @@ export function imageToAvatar(file) {
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(new Error("Image illisible"));
+      reject(new Error(tr("imageUnreadable")));
     };
     img.src = url;
   });

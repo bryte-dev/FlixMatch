@@ -7,6 +7,7 @@ import AuthCard, { FormField } from "../components/AuthCard";
 import UsernameField from "../components/UsernameField";
 import { Button } from "../components/ui";
 import { useToast } from "../toastContext";
+import { useT } from "%s";
 import { errorMessage } from "../utils";
 
 const Register = () => {
@@ -18,6 +19,7 @@ const Register = () => {
   const [error, setError] = useState("");
   const navigate = useNavigate();
   const toast = useToast();
+  const t = useT();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -25,7 +27,7 @@ const Register = () => {
     setError("");
 
     if (!email || !password || !username) {
-      setError("Remplis tous les champs obligatoires.");
+      setError(t("registerFillAll"));
       return;
     }
 
@@ -37,23 +39,23 @@ const Register = () => {
       navigate("/login");
     } catch (err) {
       console.error("Erreur d'inscription :", err.response?.data || err.message);
-      setError(errorMessage(err, "Erreur lors de l'inscription"));
+      setError(errorMessage(err, t("registerFail")));
       setLoading(false);
     }
   };
 
   return (
     <AuthCard
-      title="Créer un compte"
-      subtitle="Gratuit, pour suivre tes films et séries."
-      footer={<>Déjà inscrit ? <Link to="/login" className="font-semibold text-brand-300 hover:underline">Se connecter</Link></>}
+      title={t("createAccount")}
+      subtitle={t("registerSubtitle")}
+      footer={<>{t("alreadyRegistered")} <Link to="/login" className="font-semibold text-brand-300 hover:underline">{t("signIn")}</Link></>}
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <FormField id="email" label="Email" type="email" autoComplete="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} hint="Ton email n'est jamais affiché publiquement." />
+        <FormField id="email" label={t("emailLabel")} type="email" autoComplete="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} hint={t("emailPrivateHint")} />
         <UsernameField value={username} onChange={setUsername} onValidity={setUsernameOk} />
-        <FormField id="password" label="Mot de passe" type="password" autoComplete="new-password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} hint="8 caractères minimum." />
+        <FormField id="password" label={t("passwordLabel")} type="password" autoComplete="new-password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} hint={t("password8Hint")} />
         {error && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>}
-        <Button type="submit" variant="primary" className="w-full" disabled={!usernameOk} pending={loading} pendingLabel="Création…">Créer mon compte</Button>
+        <Button type="submit" variant="primary" className="w-full" disabled={!usernameOk} pending={loading} pendingLabel={t("creating")}>{t("createMyAccount")}</Button>
       </form>
     </AuthCard>
   );

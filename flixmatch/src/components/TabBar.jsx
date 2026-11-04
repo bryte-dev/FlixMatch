@@ -16,10 +16,10 @@ const TABS = [
 export default function TabBar() {
   const { user } = useContext(AuthContext);
   const t = useT();
-  const tabs = TABS.map((t) => (t.private && !user ? { ...t, to: "/login" } : t));
+  const tabs = TABS.map((tab) => (tab.private && !user ? { ...tab, to: "/login" } : tab));
   return (
     <nav
-      aria-label="Navigation par onglets"
+      aria-label={t("navTabs")}
       className="safe-bottom fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-ink-950/90 backdrop-blur-lg md:hidden"
     >
       <ul className="mx-auto flex max-w-lg items-stretch justify-around">

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
+import { useT } from "../i18n";
 
 export function Spinner({ className = "h-4 w-4" }) {
   return (
@@ -70,14 +71,15 @@ export function EmptyState({ icon = "🎬", title, text, actionTo, actionLabel }
   );
 }
 
-export function ErrorState({ message = "Impossible de charger les données.", onRetry }) {
+export function ErrorState({ message, onRetry }) {
+  const t = useT();
   return (
     <div role="alert" className="surface flex flex-col items-center border-red-500/20 px-6 py-12 text-center">
       <div className="mb-3 text-4xl" aria-hidden="true">⚠️</div>
-      <p className="text-zinc-300">{message}</p>
+      <p className="text-zinc-300">{message ?? t("loadDataError")}</p>
       {onRetry && (
         <Button className="mt-5" onClick={onRetry}>
-          Réessayer
+          {t("retry")}
         </Button>
       )}
     </div>
@@ -97,8 +99,9 @@ export function CardSkeleton() {
 }
 
 export function GridSkeleton({ count = 10 }) {
+  const t = useT();
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5" role="status" aria-label="Chargement">
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5" role="status" aria-label={t("loading")}>
       {Array.from({ length: count }, (_, i) => (
         <CardSkeleton key={i} />
       ))}
@@ -110,9 +113,11 @@ export function MediaGrid({ children }) {
   return <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">{children}</div>;
 }
 
-export function StarRating({ value = 0, onChange, pending = false, label = "Note" }) {
+export function StarRating({ value = 0, onChange, pending = false, label }) {
+  const t = useT();
+  const name = label ?? t("ratingWord");
   return (
-    <div className="inline-flex items-center gap-0.5" role={onChange ? "radiogroup" : "img"} aria-label={`${label} : ${value || 0} sur 5`}>
+    <div className="inline-flex items-center gap-0.5" role={onChange ? "radiogroup" : "img"} aria-label={t("outOf5", { label: name, n: value || 0 })}>
       {[1, 2, 3, 4, 5].map((star) => {
         const active = star <= value;
         const glyph = (
@@ -126,7 +131,7 @@ export function StarRating({ value = 0, onChange, pending = false, label = "Note
             type="button"
             role="radio"
             aria-checked={star === value}
-            aria-label={`${star} étoile${star > 1 ? "s" : ""}`}
+            aria-label={t(star > 1 ? "starMany" : "starOne", { n: star })}
             disabled={pending}
             onClick={() => onChange(star)}
             className="rounded p-0.5 transition hover:scale-110 disabled:opacity-60"
