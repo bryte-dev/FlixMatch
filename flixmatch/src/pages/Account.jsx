@@ -51,7 +51,7 @@ const Account = () => {
     try {
       await save({ avatar: await imageToAvatar(file) });
     } catch {
-      toast("Image illisible", "error");
+      toast(t("imageUnreadable"), "error");
     }
   };
 
@@ -61,9 +61,9 @@ const Account = () => {
       const link = `${window.location.origin}/join/${data.code}`;
       setInvite(link);
       await navigator.clipboard?.writeText(link).catch(() => {});
-      toast("Lien d'invitation copié", "success");
+      toast(t("inviteCopied"), "success");
     } catch {
-      toast("Impossible de créer le lien", "error");
+      toast(t("inviteFail"), "error");
     }
   };
 
@@ -72,32 +72,32 @@ const Account = () => {
     setLoggingOut(true);
     try {
       await logout();
-      toast("Tu es déconnecté.", "success");
+      toast(t("loggedOutToast"), "success");
       navigate("/");
     } catch {
-      toast("La déconnexion a échoué.", "error");
+      toast(t("logoutFail"), "error");
       setLoggingOut(false);
     }
   };
 
   return (
-    <AuthCard title="Mon compte" subtitle="Gère ton profil, ton avatar et ta confidentialité.">
+    <AuthCard title={t("account")} subtitle={t("accountSubtitle")}>
       <div className="mb-5 flex flex-col items-center gap-3">
         <Avatar avatar={user?.avatar} name={user?.username || user?.email} size={80} />
-        <div className="flex flex-wrap justify-center gap-2" role="group" aria-label="Avatars prédéfinis">
+        <div className="flex flex-wrap justify-center gap-2" role="group" aria-label={t("avatarPresets")}>
           {Object.entries(PRESETS).map(([id, [emoji]]) => (
-            <button key={id} type="button" className="btn btn-sm btn-secondary !px-2" aria-label={`Avatar ${id}`} onClick={() => save({ avatar: `preset:${id}` })}>{emoji}</button>
+            <button key={id} type="button" className="btn btn-sm btn-secondary !px-2" aria-label={t("avatarPresetAria", { name: id })} onClick={() => save({ avatar: `preset:${id}` })}>{emoji}</button>
           ))}
-          <button type="button" className="btn btn-sm btn-secondary" onClick={() => save({ avatar: null })}>Généré (stats)</button>
+          <button type="button" className="btn btn-sm btn-secondary" onClick={() => save({ avatar: null })}>{t("avatarGenerated")}</button>
         </div>
         <label className="btn btn-sm btn-secondary cursor-pointer">
-          Téléverser une photo
+          {t("uploadPhoto")}
           <input type="file" accept="image/*" className="sr-only" onChange={onUpload} />
         </label>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        <FormField id="email" label="Email" type="email" value={user?.email || ""} disabled readOnly hint="Visible uniquement par toi." />
+        <FormField id="email" label={t("emailLabel")} type="email" value={user?.email || ""} disabled readOnly hint={t("emailOnlyYou")} />
         <UsernameField value={username} onChange={setUsername} onValidity={setUsernameOk} />
         <Button type="submit" variant="primary" className="w-full" disabled={!usernameOk || username.trim() === (user?.username || "")} pending={saving} pendingLabel="…">{t("save")}</Button>
       </form>
@@ -115,19 +115,19 @@ const Account = () => {
         ))}
       </div>
 
-      <h2 className="mb-2 mt-6 font-bold">Amis</h2>
+      <h2 className="mb-2 mt-6 font-bold">{t("friendsTitle")}</h2>
       <div className="flex flex-wrap gap-2">
-        <Link to={`/u/${user?.id}`} className="btn btn-secondary">Mon profil public</Link>
-        <Link to="/activity" className="btn btn-secondary">Activité des amis</Link>
-        <Button onClick={getInvite}>Lien d&apos;invitation</Button>
+        <Link to={`/u/${user?.id}`} className="btn btn-secondary">{t("myPublicProfile")}</Link>
+        <Link to="/activity" className="btn btn-secondary">{t("activity")}</Link>
+        <Button onClick={getInvite}>{t("inviteLinkBtn")}</Button>
       </div>
       {invite && <p className="mt-2 break-all text-xs text-zinc-400">{invite}</p>}
 
-      <Button className="mt-6 w-full" pending={loggingOut} pendingLabel="Déconnexion…" onClick={handleLogout}>
-        <FiLogOut aria-hidden="true" /> Se déconnecter
+      <Button className="mt-6 w-full" pending={loggingOut} pendingLabel={t("loggingOut")} onClick={handleLogout}>
+        <FiLogOut aria-hidden="true" /> {t("logout")}
       </Button>
 
-      <h2 className="mb-2 mt-8 font-bold">Données et confidentialité</h2>
+      <h2 className="mb-2 mt-8 font-bold">{t("dataPrivacyTitle")}</h2>
       <PrivacyDangerZone />
     </AuthCard>
   );

@@ -16,10 +16,10 @@ import { buildFlixMatchExport, buildLetterboxdCsv, buildTraktCsv } from "../lib/
 import { analyticsConfigured, isOptedOut, setAnalyticsOptOut, track } from "../lib/analytics";
 
 const EXPORTS = {
-  flixmatch: { label: "Sauvegarde complète FlixMatch (JSON)", file: "flixmatch-export.json", type: "application/json", build: (data, settings) => JSON.stringify(buildFlixMatchExport(data, settings), null, 2) },
-  letterboxd: { label: "Films vus pour Letterboxd (CSV)", file: "flixmatch-letterboxd-watched.csv", type: "text/csv", build: (data) => buildLetterboxdCsv(data, "watched") },
-  letterboxdWatchlist: { label: "Watchlist films pour Letterboxd (CSV)", file: "flixmatch-letterboxd-watchlist.csv", type: "text/csv", build: (data) => buildLetterboxdCsv(data, "watchlist") },
-  trakt: { label: "Films, séries et épisodes pour Trakt (CSV)", file: "flixmatch-trakt.csv", type: "text/csv", build: (data) => buildTraktCsv(data) },
+  flixmatch: { labelKey: "exportFlixmatch", file: "flixmatch-export.json", type: "application/json", build: (data, settings) => JSON.stringify(buildFlixMatchExport(data, settings), null, 2) },
+  letterboxd: { labelKey: "exportLetterboxd", file: "flixmatch-letterboxd-watched.csv", type: "text/csv", build: (data) => buildLetterboxdCsv(data, "watched") },
+  letterboxdWatchlist: { labelKey: "exportLetterboxdWatchlist", file: "flixmatch-letterboxd-watchlist.csv", type: "text/csv", build: (data) => buildLetterboxdCsv(data, "watchlist") },
+  trakt: { labelKey: "exportTrakt", file: "flixmatch-trakt.csv", type: "text/csv", build: (data) => buildTraktCsv(data) },
 };
 
 const download = (name, content, type) => {
@@ -33,11 +33,17 @@ const download = (name, content, type) => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
-const REGIONS = {
-  FR: "France", BE: "Belgique", CH: "Suisse", CA: "Canada", US: "États-Unis", GB: "Royaume-Uni", DE: "Allemagne",
-  ES: "Espagne", IT: "Italie", PT: "Portugal", NL: "Pays-Bas", PL: "Pologne", TR: "Turquie", JP: "Japon",
-  KR: "Corée du Sud", BR: "Brésil", MX: "Mexique", AU: "Australie",
+const REGIONS = ["FR", "BE", "CH", "CA", "US", "GB", "DE", "ES", "IT", "PT", "NL", "PL", "TR", "JP", "KR", "BR", "MX", "AU"];
+
+const regionName = (lang, code) => {
+  try {
+    return new Intl.DisplayNames([lang], { type: "region" }).of(code) || code;
+  } catch {
+    return code;
+  }
 };
+
+const THEME_KEYS = { dark: "themeDark", light: "themeLight", auto: "themeAuto", hacker: "themeHacker", neon: "themeNeon", retro: "themeRetro" };
 
 const META_LANGS = {
   "fr-FR": "Français", "en-US": "English", "es-ES": "Español", "de-DE": "Deutsch", "it-IT": "Italiano",
@@ -93,27 +99,27 @@ export default function Settings() {
       download(spec.file, spec.build(data, settings), spec.type);
       track("data_exported", { format });
     } catch {
-      toast("L'export a échoué.", "error");
+      toast(t("exportFail"), "error");
     } finally {
       setExporting(null);
     }
   };
 
-  const visibleThemes = THEMES.filter((t) => !t.secret || unlocked || settings.theme === t.id);
+  const visibleThemes = THEMES.filter((th) => !th.secret || unlocked || settings.theme === th.id);
 
   return (
     <div className="page max-w-2xl">
-      <PageHeader title="Paramètres" subtitle="Réglages enregistrés sur cet appareil." />
+      <PageHeader title={t("settings")} subtitle={t("settingsSubtitle")} />
 
-      <Section title="Thème">
-        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Thème">
-          {visibleThemes.map((t) => (
-            <Button key={t.id} variant={settings.theme === t.id ? "primary" : "secondary"} role="radio" aria-checked={settings.theme === t.id} onClick={() => saveSettings({ theme: t.id })}>
-              {t.label}
+      <Section title={t("themeTitle")}>
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t("themeTitle")}>
+          {visibleThemes.map((th) => (
+            <Button key={th.id} variant={settings.theme === th.id ? "primary" : "secondary"} role="radio" aria-checked={settings.theme === th.id} onClick={() => saveSettings({ theme: th.id })}>
+              {t(THEME_KEYS[th.id])}
             </Button>
           ))}
         </div>
-        {!unlocked && <p className="text-xs text-zinc-500">Des thèmes secrets se cachent quelque part… (indice : un code célèbre des années 80, ou le logo)</p>}
+        {!unlocked && <p className="text-xs text-zinc-500">{t("themeHint")}</p>}
       </Section>
 
       <Section title={t("uiLanguage")}>
@@ -122,30 +128,30 @@ export default function Settings() {
         </select>
       </Section>
 
-      <Section title="Découverte (swipe)">
+      <Section title={t("swipeSettingsTitle")}>
         <label className="block text-sm font-medium">
-          <span className="mb-1 block">Glisser à droite</span>
+          <span className="mb-1 block">{t("swipeRightLabel")}</span>
           <select className="field" value={settings.swipeAction} onChange={(e) => saveSettings({ swipeAction: e.target.value })}>
-            {Object.entries(SWIPE_ACTIONS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            {Object.keys(SWIPE_ACTIONS).map((value) => <option key={value} value={value}>{t(value === "favorites" ? "swipeActionFavorites" : "swipeActionWatchlist")}</option>)}
           </select>
         </label>
         <label className="flex items-center gap-3 text-sm">
           <input type="checkbox" className="h-5 w-5 accent-brand-500" checked={settings.adult} onChange={(e) => saveSettings({ adult: e.target.checked })} />
-          Afficher le contenu pour adultes
+          {t("showAdult")}
         </label>
       </Section>
 
-      <Section title="Langue et région">
+      <Section title={t("langRegionTitle")}>
         <label className="block text-sm font-medium">
-          <span className="mb-1 block">Langue des métadonnées TMDB (titres, résumés, recherche)</span>
+          <span className="mb-1 block">{t("metaLangLabel")}</span>
           <select className="field" value={settings.metaLang} onChange={(e) => saveSettings({ metaLang: e.target.value })}>
             {Object.entries(META_LANGS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </label>
         <label className="block text-sm font-medium">
-          <span className="mb-1 block">Pays / région (disponibilité en streaming)</span>
+          <span className="mb-1 block">{t("regionLabel")}</span>
           <select className="field" value={settings.region} onChange={(e) => saveSettings({ region: e.target.value, providers: [] })}>
-            {Object.entries(REGIONS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            {REGIONS.map((value) => <option key={value} value={value}>{regionName(settings.uiLang, value)}</option>)}
           </select>
         </label>
       </Section>
@@ -162,10 +168,10 @@ export default function Settings() {
         </ul>
       </Section>
 
-      <Section title="Mes plateformes de streaming">
+      <Section title={t("myProviders")}>
         <p className="flex items-center gap-2 text-xs text-zinc-400"><ProBadge feature="provider_filters" source="settings_providers" /> {t("proFeatureProviders")}</p>
         {providers.length === 0 ? (
-          <p className="text-sm text-zinc-400">Aucune plateforme disponible pour cette région.</p>
+          <p className="text-sm text-zinc-400">{t("noProviders")}</p>
         ) : (
           <ul className="flex flex-wrap gap-2">
             {providers.map((p) => {
@@ -180,11 +186,11 @@ export default function Settings() {
             })}
           </ul>
         )}
-        <p className="text-xs text-zinc-500">Données « Où regarder » fournies par JustWatch via TMDB.</p>
+        <p className="text-xs text-zinc-500">{t("justwatchCredit")}</p>
       </Section>
 
       {analyticsConfigured() && (
-        <Section title="Statistiques d'usage">
+        <Section title={t("usageStatsTitle")}>
           <label className="flex items-start gap-3 text-sm">
             <input
               type="checkbox"
@@ -196,8 +202,7 @@ export default function Settings() {
               }}
             />
             <span>
-              Aider à améliorer FlixMatch avec des statistiques d&apos;usage anonymisées (pages vues, fonctionnalités utilisées, erreurs).
-              Ni email, ni cookie publicitaire, ni enregistrement d&apos;écran.
+              {t("usageStatsText")}
             </span>
           </label>
         </Section>
@@ -205,19 +210,19 @@ export default function Settings() {
 
       {user && (
         <>
-          <Section title="Mes données">
-            <p className="text-sm text-zinc-400">Exporte toute ta bibliothèque : watchlist, vus, favoris, notes, avis et épisodes.</p>
+          <Section title={t("myDataTitle")}>
+            <p className="text-sm text-zinc-400">{t("exportIntro")}</p>
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
               {Object.entries(EXPORTS).map(([id, spec]) => (
-                <Button key={id} onClick={() => exportData(id)} pending={exporting === id} pendingLabel="Export…" disabled={Boolean(exporting)}>
-                  {spec.label}
+                <Button key={id} onClick={() => exportData(id)} pending={exporting === id} pendingLabel={t("exporting")} disabled={Boolean(exporting)}>
+                  {t(spec.labelKey)}
                 </Button>
               ))}
             </div>
-            <Link to="/import" className="btn btn-secondary">Importer (TV Time, Letterboxd, Trakt, FlixMatch)</Link>
-            <Link to="/account" className="btn btn-secondary">Profil, confidentialité et compte</Link>
+            <Link to="/import" className="btn btn-secondary">{t("importLink")}</Link>
+            <Link to="/account" className="btn btn-secondary">{t("accountLink")}</Link>
           </Section>
-          <Section title="Réinitialiser ou supprimer">
+          <Section title={t("resetOrDeleteTitle")}>
             <PrivacyDangerZone />
           </Section>
         </>
