@@ -44,7 +44,7 @@ export default function Profile() {
   };
 
   if (error) return <div className="page"><ErrorState message={t("profileNotFound")} /></div>;
-  if (!profile) return <div className="page flex justify-center py-24 text-brand-400" role="status" aria-label="Chargement"><Spinner className="h-8 w-8" /></div>;
+  if (!profile) return <div className="page flex justify-center py-24 text-brand-400" role="status" aria-label={t("mdLoading")}><Spinner className="h-8 w-8" /></div>;
 
   const stats = profile.stats;
   const sections = profile.sections || {};
@@ -105,7 +105,7 @@ export default function Profile() {
                   to={`/${m.media_type}/${m.tmdb_id}`}
                   title={m.title}
                   poster={posterUrl(m.poster_path)}
-                  subtitle={m.total ? `${m.watched} / ${m.total}` : m.rating ? `★ ${m.rating}/5` : m.media_type === "tv" ? "Série" : "Film"}
+                  subtitle={m.total ? `${m.watched} / ${m.total}` : m.rating ? `★ ${m.rating}/5` : m.media_type === "tv" ? t("mdTv") : t("mdMovie")}
                 />
               ))}
             </MediaGrid>

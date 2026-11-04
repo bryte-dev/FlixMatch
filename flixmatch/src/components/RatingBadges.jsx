@@ -1,3 +1,4 @@
+import { useT } from "../i18n";
 import { FiStar } from "react-icons/fi";
 
 const compact = (n) => {
@@ -33,6 +34,7 @@ function Badge({ source, score, votes, size }) {
 
 // Composant unique des notes : IMDb / TMDB / FlixMatch (toutes sur 10). Les sources absentes sont masquées.
 export default function RatingBadges({ imdb, imdbVotes, tmdb, tmdbVotes, flixmatch, flixmatchVotes, size = "sm", className = "" }) {
+  const t = useT();
   const entries = [
     ["imdb", Number(imdb), imdbVotes],
     ["tmdb", Number(tmdb), tmdbVotes],
@@ -40,7 +42,7 @@ export default function RatingBadges({ imdb, imdbVotes, tmdb, tmdbVotes, flixmat
   ].filter(([, score]) => Number.isFinite(score) && score > 0);
   if (entries.length === 0) return null;
   return (
-    <div className={`flex flex-wrap gap-1 ${className}`} role="group" aria-label="Notes">
+    <div className={`flex flex-wrap gap-1 ${className}`} role="group" aria-label={t("ratingsLabel")}>
       {entries.map(([source, score, votes]) => (
         <Badge key={source} source={source} score={score} votes={votes} size={size} />
       ))}

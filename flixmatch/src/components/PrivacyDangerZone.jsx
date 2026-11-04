@@ -3,6 +3,7 @@ import axios from "axios";
 import { FormField } from "./AuthCard";
 import { BottomSheet, Button } from "./ui";
 import { useToast } from "../toastContext";
+import { useT } from "../i18n";
 import { errorMessage } from "../utils";
 
 // Caches locaux liés à la bibliothèque (ex. séries abandonnées) à vider après un reset/une suppression
@@ -17,6 +18,7 @@ const clearLibraryCaches = () => {
 
 export default function PrivacyDangerZone() {
   const toast = useToast();
+  const t = useT();
   const [resetOpen, setResetOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [resetConfirm, setResetConfirm] = useState("");
@@ -43,10 +45,10 @@ export default function PrivacyDangerZone() {
     try {
       await axios.post("/account/reset-data", { confirm: "RESET" });
       clearLibraryCaches();
-      toast("Tes listes, notes, avis et l'historique ont été effacés. Ton compte est conservé.", "success");
+      toast(t("resetDone"), "success");
       closeReset();
     } catch (err) {
-      toast(errorMessage(err, "Réinitialisation impossible"), "error");
+      toast(errorMessage(err, t("resetFail")), "error");
     } finally {
       setResetting(false);
     }
@@ -59,10 +61,10 @@ export default function PrivacyDangerZone() {
     try {
       await axios.delete("/account", { data: { password, confirm: "DELETE" } });
       clearLibraryCaches();
-      toast("Compte supprimé.", "success");
+      toast(t("accountDeleted"), "success");
       window.location.assign("/");
     } catch (err) {
-      toast(errorMessage(err, "Suppression impossible"), "error");
+      toast(errorMessage(err, t("deleteFail")), "error");
       setDeleting(false);
     }
   };
@@ -71,26 +73,24 @@ export default function PrivacyDangerZone() {
     <>
       <div className="space-y-3">
         <p className="text-sm text-zinc-400">
-          Ces actions sont définitives. Exporte tes données avant si tu veux les conserver.
+          {t("dangerIntro")}
         </p>
         <Button className="w-full" onClick={() => setResetOpen(true)}>
-          Réinitialiser mes données
+          {t("resetDataBtn")}
         </Button>
         <Button variant="danger" className="w-full" onClick={() => setDeleteOpen(true)}>
-          Supprimer mon compte et toutes mes données
+          {t("deleteAllBtn")}
         </Button>
       </div>
 
-      <BottomSheet open={resetOpen} onClose={closeReset} title="Réinitialiser mes données">
+      <BottomSheet open={resetOpen} onClose={closeReset} title={t("resetDataBtn")}>
         <form onSubmit={resetData} className="space-y-3">
           <p className="text-sm text-zinc-300">
-            Watchlist, favoris, vus, corbeille, notes, avis (avec les réponses publiées sous tes
-            avis) et épisodes marqués comme vus seront effacés. Ton compte, ton email, ton mot de
-            passe, ton profil et tes abonnements sont conservés.
+            {t("resetBody")}
           </p>
           <FormField
             id="reset-confirm"
-            label='Tape RESET pour confirmer'
+            label={t("typeReset")}
             type="text"
             autoComplete="off"
             value={resetConfirm}
@@ -102,25 +102,22 @@ export default function PrivacyDangerZone() {
             variant="danger"
             className="w-full"
             pending={resetting}
-            pendingLabel="Réinitialisation…"
+            pendingLabel={t("resetting")}
             disabled={resetConfirm !== "RESET"}
           >
-            Tout effacer (conserver mon compte)
+            {t("resetAllKeepAccount")}
           </Button>
         </form>
       </BottomSheet>
 
-      <BottomSheet open={deleteOpen} onClose={closeDelete} title="Supprimer mon compte">
+      <BottomSheet open={deleteOpen} onClose={closeDelete} title={t("deleteTitle")}>
         <form onSubmit={deleteAccount} className="space-y-3">
           <p className="text-sm text-zinc-300">
-            Cette action est définitive : ton compte, tes identifiants, ta bibliothèque, tes
-            épisodes vus, tes abonnements et tes avis (avec les réponses publiées dessous) seront
-            supprimés. Confirme en tapant DELETE puis ton mot de
-            passe.
+            {t("deleteBody")}
           </p>
           <FormField
             id="del-confirm"
-            label='Tape DELETE pour confirmer'
+            label={t("typeDelete")}
             type="text"
             autoComplete="off"
             value={deleteConfirm}
@@ -129,7 +126,7 @@ export default function PrivacyDangerZone() {
           />
           <FormField
             id="del-password"
-            label="Mot de passe"
+            label={t("passwordLabel")}
             type="password"
             autoComplete="current-password"
             value={password}
@@ -141,10 +138,10 @@ export default function PrivacyDangerZone() {
             variant="danger"
             className="w-full"
             pending={deleting}
-            pendingLabel="Suppression…"
+            pendingLabel={t("deleting")}
             disabled={deleteConfirm !== "DELETE" || !password}
           >
-            Supprimer définitivement
+            {t("deleteForever")}
           </Button>
         </form>
       </BottomSheet>

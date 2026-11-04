@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { ToastContext } from "../toastContext";
+import { useT } from "../i18n";
 
 const STYLES = {
   success: "border-emerald-500/40 bg-emerald-950/90 text-emerald-100",
@@ -8,6 +9,7 @@ const STYLES = {
 };
 
 export function ToastProvider({ children }) {
+  const tx = useT();
   const [toasts, setToasts] = useState([]);
   const nextId = useRef(1);
 
@@ -42,7 +44,7 @@ export function ToastProvider({ children }) {
               type="button"
               onClick={() => dismiss(t.id)}
               className="-mr-1 rounded px-1 text-lg leading-none opacity-70 hover:opacity-100"
-              aria-label="Fermer la notification"
+              aria-label={tx("closeNotification")}
             >
               ×
             </button>

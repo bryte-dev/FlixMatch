@@ -3,6 +3,7 @@ import axios from "axios";
 import { track } from "../lib/analytics";
 import { API_URL } from "../api";
 import { useSettings } from "../settings";
+import { useT } from "../i18n";
 import { usePro } from "../proContext";
 import ProBadge from "../components/ProBadge";
 import MediaCard from "../components/MediaCard";
@@ -11,8 +12,14 @@ import { mediaTitle, mediaYear, posterUrl } from "../utils";
 
 const EMPTY_FILTERS = { query: "", genre: "", year: "", minRating: "", maxDuration: "", originalLanguage: "", sort: "popularity", onlyMine: false };
 
-const ORIGINAL_LANGS = { fr: "Français", en: "Anglais", es: "Espagnol", de: "Allemand", it: "Italien", pt: "Portugais", ja: "Japonais", ko: "Coréen", zh: "Chinois", hi: "Hindi", tr: "Turc", ru: "Russe" };
-const SORTS = { popularity: "Popularité", rating: "Note", date: "Date de sortie" };
+const ORIGINAL_LANGS = ["fr", "en", "es", "de", "it", "pt", "ja", "ko", "zh", "hi", "tr", "ru"];
+const langName = (uiLang, code) => {
+  try {
+    return new Intl.DisplayNames([uiLang], { type: "language" }).of(code) || code;
+  } catch {
+    return code;
+  }
+};
 
 const Field = ({ label, children }) => (
   <label className="block text-sm font-medium text-zinc-300">
@@ -23,6 +30,7 @@ const Field = ({ label, children }) => (
 
 function AdvancedSearch() {
   const settings = useSettings();
+  const t = useT();
   const { openPro } = usePro();
   const [type, setType] = useState("movie");
   const [genres, setGenres] = useState([]);
@@ -116,43 +124,43 @@ function AdvancedSearch() {
 
   return (
     <div className="page">
-      <PageHeader title="Recherche avancée" subtitle="Filtre les films et séries par genre, année, note, plateforme, langue et durée." />
+      <PageHeader title={t("advancedSearch")} subtitle={t("advSubtitle")} />
 
-      <Tabs tabs={[["movie", "Films"], ["tv", "Séries"]]} value={type} onChange={setType} label="Type de titre" />
+      <Tabs tabs={[["movie", t("movies")], ["tv", t("seriesPlural")]]} value={type} onChange={setType} label={t("titleTypeLabel")} />
 
       <form className="surface mb-8 grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={(e) => e.preventDefault()}>
-        <Field label="Titre">
-          <input type="search" name="query" placeholder="Titre" className="field" value={filters.query} onChange={handleFilterChange} />
+        <Field label={t("titleLabel")}>
+          <input type="search" name="query" placeholder={t("titleLabel")} className="field" value={filters.query} onChange={handleFilterChange} />
         </Field>
-        <Field label="Genre">
+        <Field label={t("genre")}>
           <select name="genre" className="field" value={filters.genre} onChange={handleFilterChange}>
-            <option value="">Tous les genres</option>
+            <option value="">{t("allGenres")}</option>
             {genres.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
           </select>
         </Field>
-        <Field label="Année">
-          <input type="number" inputMode="numeric" name="year" min="1900" max="2100" placeholder="ex. 2020" className="field" value={filters.year} onChange={handleFilterChange} />
+        <Field label={t("year")}>
+          <input type="number" inputMode="numeric" name="year" min="1900" max="2100" placeholder={t("yearPh")} className="field" value={filters.year} onChange={handleFilterChange} />
         </Field>
-        <Field label="Note minimale (0-10)">
-          <input type="number" inputMode="decimal" name="minRating" min="0" max="10" step="0.5" placeholder="ex. 7" className="field" value={filters.minRating} onChange={handleFilterChange} />
+        <Field label={t("minRating")}>
+          <input type="number" inputMode="decimal" name="minRating" min="0" max="10" step="0.5" placeholder={t("ratingPh")} className="field" value={filters.minRating} onChange={handleFilterChange} />
         </Field>
-        <Field label="Langue originale">
+        <Field label={t("originalLang")}>
           <select name="originalLanguage" className="field" value={filters.originalLanguage} onChange={handleFilterChange}>
-            <option value="">Toutes</option>
-            {Object.entries(ORIGINAL_LANGS).map(([code, label]) => <option key={code} value={code}>{label}</option>)}
+            <option value="">{t("allFem")}</option>
+            {ORIGINAL_LANGS.map((code) => <option key={code} value={code}>{langName(settings.uiLang, code)}</option>)}
           </select>
         </Field>
-        <Field label="Durée max (min)">
-          <input type="number" inputMode="numeric" name="maxDuration" min="0" max="1000" placeholder="ex. 120" className="field" value={filters.maxDuration} onChange={handleFilterChange} />
+        <Field label={t("maxDuration")}>
+          <input type="number" inputMode="numeric" name="maxDuration" min="0" max="1000" placeholder={t("durationPh")} className="field" value={filters.maxDuration} onChange={handleFilterChange} />
         </Field>
-        <Field label="Trier par">
+        <Field label={t("sortBy")}>
           <select name="sort" className="field" value={filters.sort} onChange={handleFilterChange}>
-            {Object.entries(SORTS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            {[["popularity", t("sortPopularity")], ["rating", t("sortRating")], ["date", t("sortDate")]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </Field>
         <label className="flex items-center gap-3 self-end pb-2 text-sm text-zinc-300">
           <input type="checkbox" name="onlyMine" className="h-5 w-5 accent-brand-500" checked={filters.onlyMine} disabled={settings.providers.length === 0} onChange={handleFilterChange} />
-          Sur mes plateformes
+          {t("onMyPlatforms")}
           <ProBadge feature="provider_filters" source="advanced_search" />
         </label>
       </form>
@@ -160,9 +168,9 @@ function AdvancedSearch() {
       {loading && results.length === 0 ? (
         <GridSkeleton />
       ) : error && results.length === 0 ? (
-        <ErrorState message="Les filtres sont invalides ou TMDB est indisponible." onRetry={() => fetchPage(1)} />
+        <ErrorState message={t("advError")} onRetry={() => fetchPage(1)} />
       ) : results.length === 0 ? (
-        <EmptyState icon="🔎" title="Aucun résultat" text="Assouplis tes filtres pour élargir la recherche." />
+        <EmptyState icon="🔎" title={t("noResults")} text={t("advEmptyText")} />
       ) : (
         <>
           <MediaGrid>
@@ -172,12 +180,12 @@ function AdvancedSearch() {
                 to={`/${type}/${item.id}`}
                 title={mediaTitle(item)}
                 poster={posterUrl(item.poster_path)}
-                subtitle={[type === "tv" ? "Série" : "Film", mediaYear(item)].filter(Boolean).join(" · ")}
+                subtitle={[type === "tv" ? t("tvShow") : t("movie"), mediaYear(item)].filter(Boolean).join(" · ")}
                 ratings={{ tmdb: item.vote_average, tmdbVotes: item.vote_count }}
               />
             ))}
           </MediaGrid>
-          {loading && <div className="mt-6 flex justify-center text-brand-400" role="status" aria-label="Chargement"><Spinner className="h-7 w-7" /></div>}
+          {loading && <div className="mt-6 flex justify-center text-brand-400" role="status" aria-label={t("loading")}><Spinner className="h-7 w-7" /></div>}
           <InfiniteSentinel disabled={!hasMore || loading} onVisible={() => fetchPage(page + 1)} />
         </>
       )}

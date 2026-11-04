@@ -1,3 +1,4 @@
+import { useT } from "../i18n";
 import { useEffect, useId, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
@@ -8,6 +9,7 @@ import { getSettings } from "../settings";
 import { mediaTitle, posterUrl } from "../utils";
 
 function SearchBar({ onNavigate, className = "" }) {
+  const t = useT();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);
@@ -83,7 +85,7 @@ function SearchBar({ onNavigate, className = "" }) {
     >
       <form onSubmit={submit} role="search">
         <label htmlFor={inputId} className="sr-only">
-          Rechercher un film ou une série
+          {t("searchMovieOrSeries")}
         </label>
         <div className="relative">
           <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" aria-hidden="true" />
@@ -93,7 +95,7 @@ function SearchBar({ onNavigate, className = "" }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onFocus={() => results.length > 0 && setOpen(true)}
-            placeholder="Rechercher un film, une série…"
+            placeholder={t("searchPlaceholder")}
             autoComplete="off"
             className="field !rounded-full !bg-white/5 !py-2 pl-9 pr-9"
           />
@@ -104,9 +106,9 @@ function SearchBar({ onNavigate, className = "" }) {
       {open && (
         <div className="surface absolute left-0 right-0 top-full z-50 mt-2 max-h-96 overflow-auto p-1 sm:min-w-80">
           {failed ? (
-            <p className="px-3 py-4 text-sm text-zinc-400">La recherche est indisponible pour le moment.</p>
+            <p className="px-3 py-4 text-sm text-zinc-400">{t("searchUnavailable")}</p>
           ) : results.length === 0 ? (
-            <p className="px-3 py-4 text-sm text-zinc-400">Aucun résultat.</p>
+            <p className="px-3 py-4 text-sm text-zinc-400">{t("noResultsDot")}</p>
           ) : (
             <ul>
               {results.map((item) => {
@@ -123,7 +125,7 @@ function SearchBar({ onNavigate, className = "" }) {
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium">{mediaTitle(item)}</span>
                       <span className="block text-xs text-zinc-400">
-                        {isPerson ? "Personne · Rechercher sur Google" : item.media_type === "movie" ? "Film" : "Série TV"}
+                        {isPerson ? t("personGoogle") : item.media_type === "movie" ? t("movie") : t("tvShow")}
                       </span>
                     </span>
                   </>

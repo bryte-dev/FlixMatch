@@ -23,6 +23,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import TabBar from "./components/TabBar";
 import { useKonami, useTheme } from "./theme";
 import { useToast } from "./toastContext";
+import { useT } from "./i18n";
 import SearchResults from "./pages/SearchResults";
 import MovieDetail from "./pages/MovieDetail";
 import ProProvider from "./components/ProProvider";
@@ -31,11 +32,12 @@ import MovieNightRoom from "./pages/MovieNightRoom";
 import { Spinner, EmptyState } from "./components/ui";
 
 const PrivateRoute = ({ children }) => {
+  const t = useT();
   const { user, loading } = useContext(AuthContext);
   const location = useLocation();
   if (loading) {
     return (
-      <div className="flex flex-1 items-center justify-center py-24 text-brand-400" role="status" aria-label="Chargement">
+      <div className="flex flex-1 items-center justify-center py-24 text-brand-400" role="status" aria-label={t("loading")}>
         <Spinner className="h-8 w-8" />
       </div>
     );
@@ -53,17 +55,21 @@ const ScrollToTop = () => {
   return null;
 };
 
-const NotFound = () => (
+const NotFound = () => {
+  const t = useT();
+  return (
   <div className="page">
-    <EmptyState icon="🧭" title="Page introuvable" text="Cette page n'existe pas (ou plus)." actionTo="/" actionLabel="Retour à l'accueil" />
+    <EmptyState icon="🧭" title={t("notFoundTitle")} text={t("notFoundText")} actionTo="/" actionLabel={t("backHome")} />
   </div>
-);
+  );
+};
 
 const Shell = () => {
   const toast = useToast();
+  const t = useT();
   const { pathname } = useLocation();
   useTheme();
-  useKonami(() => toast("🕹️ Konami ! Thèmes secrets débloqués (voir Paramètres).", "success"));
+  useKonami(() => toast(t("konamiToast"), "success"));
   return (
     <ProProvider>
       <ScrollToTop />
@@ -107,15 +113,15 @@ const Shell = () => {
           />
           <span>This product uses the TMDB API but is not endorsed or certified by TMDB.</span>
         </div>
-        Créé par{" "}
+        {t("footerBy")}{" "}
         <a href="https://github.com/bryte-dev" target="_blank" rel="noopener noreferrer" className="underline hover:text-white">
           bryte-dev
         </a>
         {" · "}
         <a href="https://bryte-dev.github.io" target="_blank" rel="noopener noreferrer" className="underline hover:text-white">
-          Site web
+          {t("footerWebsite")}
         </a>
-        {" · "}Où regarder : données JustWatch via TMDB
+        {" · "}{t("footerWhere")}
       </footer>
       <TabBar />
     </ProProvider>

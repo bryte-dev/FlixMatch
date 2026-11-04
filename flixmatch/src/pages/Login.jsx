@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import AuthCard, { FormField } from "../components/AuthCard";
 import { Button } from "../components/ui";
 import { useToast } from "../toastContext";
+import { useT } from "../i18n";
 import { errorMessage } from "../utils";
 
 const Login = () => {
@@ -15,6 +16,7 @@ const Login = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
+  const t = useT();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -29,22 +31,22 @@ const Login = () => {
       navigate(typeof from === "string" && from.startsWith("/") && !from.startsWith("//") ? from : "/");
     } catch (err) {
       console.error("Erreur de connexion", err);
-      setError(errorMessage(err, "Échec de la connexion. Vérifie tes identifiants."));
+      setError(errorMessage(err, t("loginFail")));
       setLoading(false);
     }
   };
 
   return (
     <AuthCard
-      title="Connexion"
-      subtitle="Retrouve ta watchlist et tes séries en cours."
-      footer={<>Pas encore de compte ? <Link to="/register" className="font-semibold text-brand-300 hover:underline">S&apos;inscrire</Link></>}
+      title={t("login")}
+      subtitle={t("loginSubtitle")}
+      footer={<>{t("noAccountYet")} <Link to="/register" className="font-semibold text-brand-300 hover:underline">{t("signup")}</Link></>}
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <FormField id="email" label="Email" type="email" autoComplete="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
-        <FormField id="password" label="Mot de passe" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+        <FormField id="email" label={t("emailLabel")} type="email" autoComplete="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
+        <FormField id="password" label={t("passwordLabel")} type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
         {error && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>}
-        <Button type="submit" variant="primary" className="w-full" pending={loading} pendingLabel="Connexion…">Se connecter</Button>
+        <Button type="submit" variant="primary" className="w-full" pending={loading} pendingLabel={t("loggingIn")}>{t("signIn")}</Button>
       </form>
     </AuthCard>
   );

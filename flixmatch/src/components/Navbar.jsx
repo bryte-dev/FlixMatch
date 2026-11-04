@@ -91,7 +91,7 @@ function Navbar() {
       taps.current.count = 0;
       unlockThemes();
       saveSettings({ theme: "neon" });
-      toast("🎉 Thèmes secrets débloqués ! Retrouve-les dans les paramètres.", "success");
+      toast(t("konamiToast"), "success");
     }
   };
 
@@ -107,9 +107,9 @@ function Navbar() {
       await logout();
       closeMenu();
       navigate("/");
-      toast("Tu es déconnecté.", "success");
+      toast(t("loggedOutToast"), "success");
     } catch {
-      toast("La déconnexion a échoué.", "error");
+      toast(t("logoutFail"), "error");
     } finally {
       setLoggingOut(false);
     }
@@ -124,12 +124,12 @@ function Navbar() {
         Aller au contenu
       </a>
       <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 sm:px-6 lg:px-8">
-        <Link to="/" onClick={onLogoTap} className="no-select flex shrink-0 items-center gap-2" aria-label="FlixMatch, accueil">
+        <Link to="/" onClick={onLogoTap} className="no-select flex shrink-0 items-center gap-2" aria-label={t("logoAria")}>
           <img src="/FlixMatchLogo.png" alt="" className="h-9 w-9 lg:hidden" />
           <img src="/FlixMatch.png" alt="FlixMatch" className="hidden h-6 w-auto lg:block" />
         </Link>
 
-        <nav className="ml-2 hidden items-center gap-1 md:flex" aria-label="Navigation principale">
+        <nav className="ml-2 hidden items-center gap-1 md:flex" aria-label={t("navMain")}>
           {desktopLinks.map(({ to, key: k, icon: Icon, end }) => (
             <NavLink key={to} to={to} end={end} className={linkClass} title={t(k)}>
               <Icon aria-hidden="true" />
@@ -189,7 +189,7 @@ function Navbar() {
       {menuOpen && (
         <div id="menu-mobile" className="max-h-[calc(100dvh-4rem-env(safe-area-inset-top))] overflow-y-auto overscroll-contain border-t border-white/10 bg-ink-900/95 px-4 pb-4 pt-3 md:hidden">
           <SearchBar onNavigate={closeMenu} className="mb-3" />
-          <nav className="flex flex-col gap-1" aria-label="Navigation mobile">
+          <nav className="flex flex-col gap-1" aria-label={t("navMobile")}>
             {mobileLinks.map(({ to, key: k, icon: Icon, end }) => (
               <NavLink key={to} to={to} end={end} className={linkClass} onClick={closeMenu}>
                 <Icon aria-hidden="true" /> {t(k)}

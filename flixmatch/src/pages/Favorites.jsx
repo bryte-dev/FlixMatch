@@ -2,6 +2,7 @@ import axios from "axios";
 import { FiStar } from "react-icons/fi";
 import { API_URL } from "../api";
 import { useToast } from "../toastContext";
+import { useT } from "../i18n";
 import useBusy from "../hooks/useBusy";
 import useLibrary from "../hooks/useLibrary";
 import LibraryView from "../components/LibraryView";
@@ -14,6 +15,7 @@ function Favorites() {
   const library = useLibrary("/favorites");
   const paging = useIncremental(library.entries);
   const toast = useToast();
+  const t = useT();
   const { isBusy, run } = useBusy();
 
   const removeFromFavorites = (entry) =>
@@ -23,20 +25,20 @@ function Favorites() {
         library.removeEntry(entry.movie.id);
         toast("Retiré des favoris", "success");
       } catch (err) {
-        toast(errorMessage(err, "Impossible de retirer des favoris"), "error");
+        toast(errorMessage(err, t("favRemoveFail")), "error");
       }
     });
 
   return (
     <LibraryView
-      title="Mes favoris"
+      title={t("myFavorites")}
       library={library}
       empty={{
         icon: "⭐",
-        title: "Aucun favori pour l'instant",
-        text: "Marque un titre de ta watchlist avec l'étoile pour le retrouver ici.",
+        title: t("favEmptyTitle"),
+        text: t("favEmptyText"),
         actionTo: "/watchlist",
-        actionLabel: "Ouvrir ma watchlist",
+        actionLabel: t("openWatchlist"),
       }}
     >
       <MediaGrid>
@@ -46,17 +48,17 @@ function Favorites() {
             to={`/${movie.media_type}/${movie.tmdb_id}`}
             title={movie.title}
             poster={posterUrl(movie.poster_path)}
-            subtitle={movie.media_type === "tv" ? "Série" : "Film"}
+            subtitle={movie.media_type === "tv" ? t("tvShow") : t("movie")}
           >
             <Button
               size="sm"
               className="w-full"
               pending={isBusy(movie.id)}
-              pendingLabel="Retrait…"
+              pendingLabel={t("removing")}
               onClick={() => removeFromFavorites({ movie })}
-              aria-label={`Retirer ${movie.title} des favoris`}
+              aria-label={t("removeFavAria", { title: movie.title })}
             >
-              <FiStar aria-hidden="true" className="text-amber-400" /> Retirer
+              <FiStar aria-hidden="true" className="text-amber-400" /> {t("remove")}
             </Button>
           </MediaCard>
         ))}

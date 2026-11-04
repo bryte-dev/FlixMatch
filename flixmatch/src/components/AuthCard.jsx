@@ -1,11 +1,13 @@
+import { useT } from "../i18n";
 import { Link } from "react-router-dom";
 
 export default function AuthCard({ title, subtitle, footer, children }) {
+  const t = useT();
   return (
     <div className="page flex items-center justify-center">
       <div className="surface w-full max-w-md p-6 sm:p-8">
         <div className="mb-6 flex flex-col items-center text-center">
-          <Link to="/" aria-label="Accueil FlixMatch">
+          <Link to="/" aria-label={t("homeAria")}>
             <img src="/FlixMatchLogo.png" alt="" className="mb-3 h-14 w-14" />
           </Link>
           <h1 className="text-2xl font-bold">{title}</h1>

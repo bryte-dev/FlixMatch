@@ -2,6 +2,7 @@ import axios from "axios";
 import { FiEye, FiStar, FiTrash2 } from "react-icons/fi";
 import { API_URL } from "../api";
 import { useToast } from "../toastContext";
+import { useT } from "../i18n";
 import useBusy from "../hooks/useBusy";
 import useLibrary, { useEpisodeCounts } from "../hooks/useLibrary";
 import LibraryView from "../components/LibraryView";
@@ -14,6 +15,7 @@ function Watchlist() {
   const library = useLibrary("/watchlist");
   const episodeCounts = useEpisodeCounts();
   const toast = useToast();
+  const t = useT();
   const { isBusy, run } = useBusy();
 
   const entries = library.entries.filter((e) => e.status !== "SEEN" && e.status !== "JUNK");
@@ -25,9 +27,9 @@ function Watchlist() {
       try {
         await axios.put(`${API_URL}/watchlist/${entry.movie.id}/favorite`, { isFavorite: next });
         library.patchEntry(entry.movie.id, { isFavorite: next });
-        toast(next ? "Ajouté aux favoris" : "Retiré des favoris", "success");
+        toast(next ? t("favAdded") : t("favRemoved"), "success");
       } catch (err) {
-        toast(errorMessage(err, "Impossible de modifier les favoris"), "error");
+        toast(errorMessage(err, t("favToggleFail")), "error");
       }
     });
 
@@ -36,9 +38,9 @@ function Watchlist() {
       try {
         await axios.put(`${API_URL}/watchlist/${entry.movie.id}/seen`);
         library.removeEntry(entry.movie.id);
-        toast(`« ${entry.movie.title} » marqué comme vu`, "success");
+        toast(t("markedSeenToast", { title: entry.movie.title }), "success");
       } catch (err) {
-        toast(errorMessage(err, "Impossible de marquer comme vu"), "error");
+        toast(errorMessage(err, t("markSeenFail")), "error");
       }
     });
 
@@ -47,23 +49,23 @@ function Watchlist() {
       try {
         await axios.put(`${API_URL}/watchlist/${entry.movie.id}/junk`);
         library.removeEntry(entry.movie.id);
-        toast(`« ${entry.movie.title} » déplacé dans la corbeille`, "success");
+        toast(t("trashedToast", { title: entry.movie.title }), "success");
       } catch (err) {
-        toast(errorMessage(err, "Impossible de déplacer vers la corbeille"), "error");
+        toast(errorMessage(err, t("trashFail")), "error");
       }
     });
 
   return (
     <LibraryView
-      title="Ma watchlist"
-      subtitle={library.loading || library.error ? "" : `${entries.length} titre${entries.length > 1 ? "s" : ""} à regarder`}
+      title={t("myWatchlistTitle")}
+      subtitle={library.loading || library.error ? "" : t(entries.length > 1 ? "toWatchMany" : "toWatchOne", { n: entries.length })}
       library={{ ...library, entries }}
       empty={{
         icon: "🍿",
-        title: "Ta watchlist est vide",
-        text: "Ajoute des films et séries depuis les tendances ou la recherche pour les retrouver ici.",
+        title: t("watchlistEmptyTitle"),
+        text: t("watchlistEmptyText"),
         actionTo: "/",
-        actionLabel: "Découvrir des titres",
+        actionLabel: t("discoverTitles"),
       }}
     >
       <MediaGrid>
@@ -76,7 +78,7 @@ function Watchlist() {
               to={`/${movie.media_type}/${movie.tmdb_id}`}
               title={movie.title}
               poster={posterUrl(movie.poster_path)}
-              subtitle={movie.media_type === "tv" ? (watched ? `Série · ${watched} épisode${watched > 1 ? "s" : ""} vu${watched > 1 ? "s" : ""}` : "Série") : "Film"}
+              subtitle={movie.media_type === "tv" ? (watched ? `${t("tvShow")} · ${t(watched > 1 ? "epSeenMany" : "epSeenOne", { n: watched })}` : t("tvShow")) : t("movie")}
               badge={entry.isFavorite ? "★ Favori" : null}
             >
               <Button
@@ -86,7 +88,7 @@ function Watchlist() {
                 pending={isBusy(`seen-${movie.id}`)}
                 pendingLabel="…"
                 onClick={() => markAsSeen(entry)}
-                aria-label={`Marquer ${movie.title} comme vu`}
+                aria-label={t("markSeenAria", { title: movie.title })}
               >
                 <FiEye aria-hidden="true" /> Vu
               </Button>
@@ -95,7 +97,7 @@ function Watchlist() {
                 pending={isBusy(`fav-${movie.id}`)}
                 onClick={() => toggleFavorite(entry)}
                 aria-pressed={entry.isFavorite}
-                aria-label={entry.isFavorite ? `Retirer ${movie.title} des favoris` : `Ajouter ${movie.title} aux favoris`}
+                aria-label={entry.isFavorite ? t("removeFavAria", { title: movie.title }) : t("addFavAria", { title: movie.title })}
                 className={entry.isFavorite ? "!text-amber-400" : ""}
               >
                 <FiStar aria-hidden="true" />
@@ -105,7 +107,7 @@ function Watchlist() {
                 variant="danger"
                 pending={isBusy(`junk-${movie.id}`)}
                 onClick={() => moveToJunk(entry)}
-                aria-label={`Mettre ${movie.title} à la corbeille`}
+                aria-label={t("trashAria", { title: movie.title })}
               >
                 <FiTrash2 aria-hidden="true" />
               </Button>

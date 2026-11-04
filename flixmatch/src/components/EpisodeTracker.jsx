@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import axios from "axios";
 import { FiCheck, FiChevronDown } from "react-icons/fi";
 import { API_URL } from "../api";
+import { useT, tr } from "../i18n";
 import { useToast } from "../toastContext";
 import useBusy from "../hooks/useBusy";
 import { BottomSheet, Button, ErrorState, Spinner } from "./ui";
@@ -40,10 +41,11 @@ function ProgressBar({ done, total, label }) {
 }
 
 const seasonLabel = (season) =>
-  season.season_number === 0 ? "Épisodes spéciaux" : season.name || `Saison ${season.season_number}`;
+  season.season_number === 0 ? tr("epSpecials") : season.name || tr("epSeasonN", { n: season.season_number });
 
 export default function EpisodeTracker({ seriesId, user, title = "", posterPath = "" }) {
   const toast = useToast();
+  const t = useT();
   const { isBusy, run } = useBusy();
 
   const [seasons, setSeasons] = useState(null);
@@ -167,11 +169,11 @@ export default function EpisodeTracker({ seriesId, user, title = "", posterPath 
           const missing = missingBefore(map, watched, seasonNumber, episodeNumber);
           if (missing.length > 0) {
             setSheet({
-              title: "Marquer les épisodes précédents ?",
-              text: `${missing.length} épisode${missing.length > 1 ? "s" : ""} diffusé${missing.length > 1 ? "s" : ""} avant S${seasonNumber}·E${episodeNumber} ne ${missing.length > 1 ? "sont" : "est"} pas marqué${missing.length > 1 ? "s" : ""} comme vu${missing.length > 1 ? "s" : ""}.`,
+              title: t("epPrevTitle"),
+              text: t("epPrevText", { n: missing.length, s: seasonNumber, e: episodeNumber }),
               options: [
-                { label: `Oui, tout (${missing.length + 1})`, variant: "primary", action: () => applyBulk([...missing, ...single], true) },
-                { label: "Seulement celui-ci", action: () => applyBulk(single, true) },
+                { label: t("epAllN", { n: missing.length + 1 }), variant: "primary", action: () => applyBulk([...missing, ...single], true) },
+                { label: t("epOnlyThis"), action: () => applyBulk(single, true) },
               ],
             });
             return;
@@ -182,18 +184,18 @@ export default function EpisodeTracker({ seriesId, user, title = "", posterPath 
         const following = watchedAfter(watched, seasonNumber, episodeNumber);
         if (following.length > 0) {
           setSheet({
-            title: "Décocher aussi les suivants ?",
-            text: `${following.length} épisode${following.length > 1 ? "s" : ""} suivant${following.length > 1 ? "s" : ""} ${following.length > 1 ? "sont" : "est"} marqué${following.length > 1 ? "s" : ""} comme vu${following.length > 1 ? "s" : ""}.`,
+            title: t("epFollowTitle"),
+            text: t("epFollowText", { n: following.length }),
             options: [
-              { label: `Oui, décocher les suivants (${following.length})`, variant: "danger", action: () => applyBulk([...single, ...following], false) },
-              { label: "Seulement celui-ci", action: () => applyBulk(single, false) },
+              { label: t("epUncheckFollowing", { n: following.length }), variant: "danger", action: () => applyBulk([...single, ...following], false) },
+              { label: t("epOnlyThis"), action: () => applyBulk(single, false) },
             ],
           });
           return;
         }
         await applyBulk(single, false);
       } catch (err) {
-        failure(err, "Impossible de mettre à jour l'épisode");
+        failure(err, t("epUpdateFail"));
       }
     });
 
@@ -206,27 +208,27 @@ export default function EpisodeTracker({ seriesId, user, title = "", posterPath 
           const own = airedItems(map, seasonNumber);
           if (previous.length > 0) {
             const prevItems = previous.flatMap((n) => airedItems(map, n).filter((i) => !watched.has(key(i.seasonNumber, i.episodeNumber))));
-            const label = previous.length === 1 ? `la saison ${previous[0]}` : `les saisons ${previous[0]} à ${previous[previous.length - 1]}`;
+            const range = previous.length === 1 ? `${previous[0]}` : `${previous[0]}–${previous[previous.length - 1]}`;
             setSheet({
-              title: "Marquer les saisons précédentes ?",
-              text: `Ces saisons ne sont pas entièrement vues : proposer de marquer aussi ${label} ?`,
+              title: t("epPrevSeasonsTitle"),
+              text: t("epPrevSeasonsText", { range }),
               options: [
-                { label: "Oui, tout", variant: "primary", action: () => applyBulk([...prevItems, ...own], true) },
-                { label: "Seulement cette saison", action: () => applyBulk(own, true) },
+                { label: t("epYesAll"), variant: "primary", action: () => applyBulk([...prevItems, ...own], true) },
+                { label: t("epOnlySeason"), action: () => applyBulk(own, true) },
               ],
             });
             return;
           }
           await applyBulk(own, true);
-          toast("Saison marquée comme vue", "success");
+          toast(t("epSeasonDone"), "success");
         } else {
           await axios.put(`${API_URL}/episodes/${seriesId}/season/${seasonNumber}`, { watched: false });
           setWatched((prev) => new Set([...prev].filter((k) => !k.startsWith(`${seasonNumber}-`))));
           setConfirmReset(null);
-          toast("Saison remise à zéro", "success");
+          toast(t("epSeasonReset"), "success");
         }
       } catch (err) {
-        failure(err, "Impossible de mettre à jour la saison");
+        failure(err, t("epSeasonFail"));
       }
     });
 
@@ -238,28 +240,28 @@ export default function EpisodeTracker({ seriesId, user, title = "", posterPath 
         const items = regular.flatMap((n) => airedItems(map, n)).filter((i) => !watched.has(key(i.seasonNumber, i.episodeNumber)));
         if (items.length === 0) return;
         setSheet({
-          title: "Marquer toute la série ?",
-          text: `${items.length} épisode${items.length > 1 ? "s" : ""} diffusé${items.length > 1 ? "s" : ""} seront marqués comme vus (les épisodes à venir sont ignorés).`,
-          options: [{ label: "Oui, toute la série", variant: "primary", action: () => applyBulk(items, true) }],
+          title: t("epSeriesTitle"),
+          text: t("epSeriesText", { n: items.length }),
+          options: [{ label: t("epYesSeries"), variant: "primary", action: () => applyBulk(items, true) }],
         });
       } catch (err) {
-        failure(err, "Impossible de charger la série");
+        failure(err, t("epSeriesLoadFail"));
       }
     });
 
   const goNext = () =>
     run("next", async () => {
       const n = firstIncompleteSeason(seasons, watched);
-      if (n === null) return toast("Tu as tout vu 🎉", "success");
+      if (n === null) return toast(t("epAllSeen"), "success");
       try {
         const map = await ensureEpisodes([n]);
         const ep = nextUnwatched(map[n], watched, n);
         setOpen(n);
-        if (!ep) return toast("Plus d'épisode diffusé à voir pour l'instant", "info");
-        toast(`Prochain épisode : S${n}·E${ep.episode_number} — ${ep.name}`, "info");
+        if (!ep) return toast(t("epNoneAired"), "info");
+        toast(t("epNext", { s: n, e: ep.episode_number, name: ep.name }), "info");
         setTimeout(() => document.getElementById(`ep-${n}-${ep.episode_number}`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 100);
       } catch (err) {
-        failure(err, "Impossible de trouver le prochain épisode");
+        failure(err, t("epNextFail"));
       }
     });
 
@@ -285,7 +287,7 @@ export default function EpisodeTracker({ seriesId, user, title = "", posterPath 
           // stockage indisponible
         }
       } catch (err) {
-        failure(err, "Impossible de modifier l'état de la série");
+        failure(err, t("epStateFail"));
       }
     });
 
@@ -293,16 +295,16 @@ export default function EpisodeTracker({ seriesId, user, title = "", posterPath 
     setSheet(null);
     try {
       await action();
-      toast("Progression mise à jour", "success");
+      toast(t("epProgressUpdated"), "success");
     } catch (err) {
-      failure(err, "Impossible de mettre à jour la progression");
+      failure(err, t("epProgressFail"));
     }
   };
 
   if (seasonsError) return <ErrorState message="Impossible de charger les saisons depuis TMDB." onRetry={loadSeasons} />;
   if (!seasons) {
     return (
-      <div className="surface space-y-3 p-5" role="status" aria-label="Chargement des saisons">
+      <div className="surface space-y-3 p-5" role="status" aria-label={t("epLoadingSeasons")}>
         <div className="skeleton h-5 w-1/3" />
         <div className="skeleton h-2 w-full" />
         <div className="skeleton h-14 w-full" />
@@ -311,7 +313,7 @@ export default function EpisodeTracker({ seriesId, user, title = "", posterPath 
     );
   }
   if (seasons.length === 0) {
-    return <div className="surface p-6 text-center text-zinc-400">Aucune saison ni aucun épisode n&apos;est disponible pour cette série.</div>;
+    return <div className="surface p-6 text-center text-zinc-400">{t("epNoSeasons")}</div>;
   }
 
   return (
@@ -324,21 +326,21 @@ export default function EpisodeTracker({ seriesId, user, title = "", posterPath 
             {user && lastLabel && <span className="chip">{lastLabel}</span>}
           </p>
           <p className="text-sm text-zinc-300" aria-live="polite">
-            {user ? `${Math.min(watchedTotal, totalEpisodes)} / ${totalEpisodes} épisodes vus` : `${totalEpisodes} épisodes`}
+            {user ? t("epSeenCount", { done: Math.min(watchedTotal, totalEpisodes), total: totalEpisodes }) : t("epTotal", { n: totalEpisodes })}
           </p>
         </div>
         {user ? (
           <>
-            <ProgressBar done={watchedTotal} total={totalEpisodes} label="Progression de la série" />
+            <ProgressBar done={watchedTotal} total={totalEpisodes} label={t("epSeriesProgress")} />
             <div className="mt-3 flex flex-wrap gap-2">
-              {status !== "completed" && <Button size="sm" variant="primary" pending={isBusy("next")} onClick={goNext}>Prochain épisode</Button>}
-              {status !== "completed" && <Button size="sm" pending={isBusy("series")} onClick={markSeries}>Marquer la série comme vue</Button>}
-              {status !== "completed" && <Button size="sm" variant="ghost" aria-pressed={abandoned} onClick={toggleAbandoned}>{abandoned ? "Reprendre la série" : "Abandonner"}</Button>}
+              {status !== "completed" && <Button size="sm" variant="primary" pending={isBusy("next")} onClick={goNext}>{t("epNextBtn")}</Button>}
+              {status !== "completed" && <Button size="sm" pending={isBusy("series")} onClick={markSeries}>{t("epMarkSeries")}</Button>}
+              {status !== "completed" && <Button size="sm" variant="ghost" aria-pressed={abandoned} onClick={toggleAbandoned}>{abandoned ? t("epResume") : t("epAbandon")}</Button>}
             </div>
           </>
         ) : (
           <p className="text-sm text-zinc-400">
-            <Link to="/login" className="font-semibold text-brand-300 hover:underline">Connecte-toi</Link> pour suivre les épisodes que tu as vus.
+            <Link to="/login" className="font-semibold text-brand-300 hover:underline">{t("rvLogin")}</Link>{t("epLoginPost")}
           </p>
         )}
       </div>
@@ -361,10 +363,10 @@ export default function EpisodeTracker({ seriesId, user, title = "", posterPath 
               <div className="min-w-0 flex-1">
                 <h3 className="truncate font-semibold">{seasonLabel(season)}</h3>
                 <p className="text-xs text-zinc-400">
-                  {user ? `${done} / ${season.episode_count} épisodes vus` : `${season.episode_count} épisodes`}
+                  {user ? t("epSeenCount", { done, total: season.episode_count }) : t("epTotal", { n: season.episode_count })}
                   {season.air_date ? ` · ${season.air_date.slice(0, 4)}` : ""}
                 </p>
-                {user && <div className="mt-2 max-w-xs"><ProgressBar done={done} total={season.episode_count} label={`Progression ${seasonLabel(season)}`} /></div>}
+                {user && <div className="mt-2 max-w-xs"><ProgressBar done={done} total={season.episode_count} label={seasonLabel(season)} /></div>}
               </div>
               {complete && user && <span className="chip !border-emerald-500/30 !text-emerald-300"><FiCheck aria-hidden="true" className="mr-1" />Vue</span>}
               <FiChevronDown aria-hidden="true" className={`shrink-0 transition ${isOpen ? "rotate-180" : ""}`} />
@@ -375,16 +377,16 @@ export default function EpisodeTracker({ seriesId, user, title = "", posterPath 
                 {user && (
                   <div className="mb-4 flex flex-wrap items-center gap-2">
                     {!complete && (
-                      <Button size="sm" variant="primary" pending={isBusy(`season-${n}`)} pendingLabel="Mise à jour…" onClick={() => setSeasonWatched(n, true)}>
+                      <Button size="sm" variant="primary" pending={isBusy(`season-${n}`)} pendingLabel={t("epUpdating")} onClick={() => setSeasonWatched(n, true)}>
                         Marquer la saison comme vue
                       </Button>
                     )}
                     {done > 0 &&
                       (confirmReset === n ? (
                         <>
-                          <span className="text-sm text-zinc-300">Retirer tous les épisodes vus de cette saison ?</span>
-                          <Button size="sm" variant="danger" pending={isBusy(`season-${n}`)} pendingLabel="…" onClick={() => setSeasonWatched(n, false)}>Oui, réinitialiser</Button>
-                          <Button size="sm" variant="ghost" onClick={() => setConfirmReset(null)}>Annuler</Button>
+                          <span className="text-sm text-zinc-300">{t("epResetSeasonQ")}</span>
+                          <Button size="sm" variant="danger" pending={isBusy(`season-${n}`)} pendingLabel="…" onClick={() => setSeasonWatched(n, false)}>{t("epYesReset")}</Button>
+                          <Button size="sm" variant="ghost" onClick={() => setConfirmReset(null)}>{t("cancel")}</Button>
                         </>
                       ) : (
                         <Button size="sm" variant="ghost" onClick={() => setConfirmReset(n)}>Tout marquer non vu</Button>
@@ -393,11 +395,11 @@ export default function EpisodeTracker({ seriesId, user, title = "", posterPath 
                 )}
 
                 {episodesError[n] ? (
-                  <ErrorState message="Impossible de charger les épisodes." onRetry={() => loadEpisodes(n)} />
+                  <ErrorState message={t("epLoadFail")} onRetry={() => loadEpisodes(n)} />
                 ) : !episodes ? (
-                  <div className="flex justify-center py-6 text-brand-400" role="status" aria-label="Chargement des épisodes"><Spinner className="h-6 w-6" /></div>
+                  <div className="flex justify-center py-6 text-brand-400" role="status" aria-label={t("epLoadingEps")}><Spinner className="h-6 w-6" /></div>
                 ) : episodes.length === 0 ? (
-                  <p className="text-center text-sm text-zinc-400">Aucun épisode disponible.</p>
+                  <p className="text-center text-sm text-zinc-400">{t("epNoEps")}</p>
                 ) : (
                   <ul className="divide-y divide-white/5">
                     {episodes.map((ep) => {
@@ -417,7 +419,7 @@ export default function EpisodeTracker({ seriesId, user, title = "", posterPath 
                               {ep.name}
                             </p>
                             <p className="text-xs text-zinc-500">
-                              {[formatDate(ep.air_date), ep.runtime ? `${ep.runtime} min` : "", aired ? "" : "Pas encore diffusé"].filter(Boolean).join(" · ") || "Date inconnue"}
+                              {[formatDate(ep.air_date), ep.runtime ? `${ep.runtime} min` : "", aired ? "" : t("epNotAired")].filter(Boolean).join(" · ") || t("epDateUnknown")}
                             </p>
                             {ep.overview && <p className="mt-1 line-clamp-2 text-sm text-zinc-400">{ep.overview}</p>}
                           </div>
@@ -429,7 +431,7 @@ export default function EpisodeTracker({ seriesId, user, title = "", posterPath 
                               disabled={!aired && !isWatched}
                               onClick={() => toggleEpisode(n, ep.episode_number)}
                               aria-pressed={isWatched}
-                              aria-label={`${isWatched ? "Marquer non vu" : "Marquer comme vu"} : épisode ${ep.episode_number}, ${ep.name}`}
+                              aria-label={t(isWatched ? "epMarkUnseenAria" : "epMarkSeenAria", { e: ep.episode_number, name: ep.name })}
                             >
                               <FiCheck aria-hidden="true" />
                               <span className="hidden sm:inline">{isWatched ? "Vu" : "Marquer vu"}</span>
@@ -451,7 +453,7 @@ export default function EpisodeTracker({ seriesId, user, title = "", posterPath 
           {sheet?.options.map((o) => (
             <Button key={o.label} variant={o.variant || "secondary"} onClick={() => runSheetAction(o.action)}>{o.label}</Button>
           ))}
-          <Button variant="ghost" onClick={() => setSheet(null)}>Annuler</Button>
+          <Button variant="ghost" onClick={() => setSheet(null)}>{t("cancel")}</Button>
         </div>
       </BottomSheet>
     </div>

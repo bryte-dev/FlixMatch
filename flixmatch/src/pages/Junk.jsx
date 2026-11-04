@@ -2,6 +2,7 @@ import axios from "axios";
 import { FiRotateCcw } from "react-icons/fi";
 import { API_URL } from "../api";
 import { useToast } from "../toastContext";
+import { useT } from "../i18n";
 import useBusy from "../hooks/useBusy";
 import useLibrary from "../hooks/useLibrary";
 import LibraryView from "../components/LibraryView";
@@ -14,6 +15,7 @@ function Junk() {
   const library = useLibrary("/junk");
   const paging = useIncremental(library.entries);
   const toast = useToast();
+  const t = useT();
   const { isBusy, run } = useBusy();
 
   const restore = (movie) =>
@@ -21,23 +23,23 @@ function Junk() {
       try {
         await axios.put(`${API_URL}/junk/${movie.id}/restore`);
         library.removeEntry(movie.id);
-        toast(`« ${movie.title} » restauré dans ta watchlist`, "success");
+        toast(t("restoredJunkToast", { title: movie.title }), "success");
       } catch (err) {
-        toast(errorMessage(err, "Impossible de restaurer ce titre"), "error");
+        toast(errorMessage(err, t("restoreJunkFail")), "error");
       }
     });
 
   return (
     <LibraryView
-      title="Corbeille"
-      subtitle={library.loading || library.error ? "" : "Les titres que tu ne veux plus voir apparaître"}
+      title={t("trash")}
+      subtitle={library.loading || library.error ? "" : t("junkSubtitle")}
       library={library}
       empty={{
         icon: "🗑️",
-        title: "La corbeille est vide",
-        text: "Les titres que tu écartes depuis ta watchlist apparaîtront ici.",
+        title: t("junkEmptyTitle"),
+        text: t("junkEmptyText"),
         actionTo: "/watchlist",
-        actionLabel: "Ouvrir ma watchlist",
+        actionLabel: t("openWatchlist"),
       }}
     >
       <MediaGrid>
@@ -47,17 +49,17 @@ function Junk() {
             to={`/${movie.media_type}/${movie.tmdb_id}`}
             title={movie.title}
             poster={posterUrl(movie.poster_path)}
-            subtitle={movie.media_type === "tv" ? "Série" : "Film"}
+            subtitle={movie.media_type === "tv" ? t("tvShow") : t("movie")}
           >
             <Button
               size="sm"
               className="w-full"
               pending={isBusy(movie.id)}
-              pendingLabel="Restauration…"
+              pendingLabel={t("restoring")}
               onClick={() => restore(movie)}
-              aria-label={`Restaurer ${movie.title} dans la watchlist`}
+              aria-label={t("restoreAria", { title: movie.title })}
             >
-              <FiRotateCcw aria-hidden="true" /> Restaurer
+              <FiRotateCcw aria-hidden="true" /> {t("restore")}
             </Button>
           </MediaCard>
         ))}
