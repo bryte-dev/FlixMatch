@@ -5,25 +5,36 @@ import { Link, useNavigate } from "react-router-dom";
 import { FiLogOut } from "react-icons/fi";
 import AuthCard, { FormField } from "../components/AuthCard";
 import Avatar, { PRESETS, imageToAvatar } from "../components/Avatar";
+import UsernameField from "../components/UsernameField";
 import { Button } from "../components/ui";
+import { useT } from "../i18n";
 import PrivacyDangerZone from "../components/PrivacyDangerZone";
 import { useToast } from "../toastContext";
 
-const LEVELS = { public: "Public", friends: "Amis (abonnement mutuel)", private: "Privé" };
-const SECTIONS = [["privacyProfile", "Profil"], ["privacyLibrary", "Bibliothèque et stats"], ["privacyActivity", "Activité"]];
+const LEVELS = [["public", "visPublic"], ["friends", "visFriends"], ["private", "visPrivate"]];
+const SECTIONS = [
+  ["privacyProfile", "privProfile"],
+  ["privacySeen", "privSeen"],
+  ["privacyWatchlist", "privWatchlist"],
+  ["privacyTracking", "privTracking"],
+  ["privacyLibrary", "privLibrary"],
+  ["privacyActivity", "privActivity"],
+];
 
 const Account = () => {
   const { user, logout, updateProfile } = useContext(AuthContext);
   const navigate = useNavigate();
+  const t = useT();
   const toast = useToast();
   const [username, setUsername] = useState(user?.username || "");
+  const [usernameOk, setUsernameOk] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [invite, setInvite] = useState("");
 
-  const save = async (patch, message = "Profil mis à jour") => {
-    const ok = await updateProfile(patch);
-    toast(ok ? message : "Impossible de mettre à jour le profil", ok ? "success" : "error");
+  const save = async (patch, message = t("profileUpdated")) => {
+    const result = await updateProfile(patch);
+    toast(result.ok ? message : (result.reason && t(result.reason)) || t("updateFailed"), result.ok ? "success" : "error");
   };
 
   const handleSubmit = async (e) => {
@@ -87,17 +98,18 @@ const Account = () => {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <FormField id="email" label="Email" type="email" value={user?.email || ""} disabled readOnly hint="Visible uniquement par toi." />
-        <FormField id="username" label="Nom d'utilisateur" type="text" maxLength={50} value={username} onChange={(e) => setUsername(e.target.value)} hint="Affiché à côté de tes avis." />
-        <Button type="submit" variant="primary" className="w-full" pending={saving} pendingLabel="Enregistrement…">Enregistrer</Button>
+        <UsernameField value={username} onChange={setUsername} onValidity={setUsernameOk} />
+        <Button type="submit" variant="primary" className="w-full" disabled={!usernameOk || username.trim() === (user?.username || "")} pending={saving} pendingLabel="…">{t("save")}</Button>
       </form>
 
-      <h2 className="mb-2 mt-6 font-bold">Confidentialité</h2>
+      <h2 className="mb-1 mt-6 font-bold">{t("privacyTitle")}</h2>
+      <p className="mb-3 text-xs text-zinc-400">{t("privacyIntro")}</p>
       <div className="space-y-3">
         {SECTIONS.map(([field, label]) => (
           <label key={field} className="block text-sm font-medium">
-            <span className="mb-1 block">{label}</span>
-            <select className="field" value={user?.[field] || "public"} onChange={(e) => save({ [field]: e.target.value }, "Confidentialité mise à jour")}>
-              {Object.entries(LEVELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            <span className="mb-1 block">{t(label)}</span>
+            <select className="field" value={user?.[field] || "private"} onChange={(e) => save({ [field]: e.target.value }, t("profileUpdated"))}>
+              {LEVELS.map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}
             </select>
           </label>
         ))}
