@@ -3,6 +3,8 @@ import axios from "axios";
 import { track } from "../lib/analytics";
 import { API_URL } from "../api";
 import { useSettings } from "../settings";
+import { usePro } from "../proContext";
+import ProBadge from "../components/ProBadge";
 import MediaCard from "../components/MediaCard";
 import { EmptyState, ErrorState, GridSkeleton, InfiniteSentinel, MediaGrid, PageHeader, Spinner, Tabs } from "../components/ui";
 import { mediaTitle, mediaYear, posterUrl } from "../utils";
@@ -21,6 +23,7 @@ const Field = ({ label, children }) => (
 
 function AdvancedSearch() {
   const settings = useSettings();
+  const { openPro } = usePro();
   const [type, setType] = useState("movie");
   const [genres, setGenres] = useState([]);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
@@ -104,8 +107,10 @@ function AdvancedSearch() {
     fetchPage(1);
   }, [fetchPage]);
 
-  const handleFilterChange = (e) =>
+  const handleFilterChange = (e) => {
+    if (e.target.name === "onlyMine" && e.target.checked) openPro("provider_filters", { source: "advanced_search" });
     setFilters((prev) => ({ ...prev, [e.target.name]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
+  };
 
   const hasMore = page > 0 && page < totalPages && !error;
 
@@ -148,6 +153,7 @@ function AdvancedSearch() {
         <label className="flex items-center gap-3 self-end pb-2 text-sm text-zinc-300">
           <input type="checkbox" name="onlyMine" className="h-5 w-5 accent-brand-500" checked={filters.onlyMine} disabled={settings.providers.length === 0} onChange={handleFilterChange} />
           Sur mes plateformes
+          <ProBadge feature="provider_filters" source="advanced_search" />
         </label>
       </form>
 

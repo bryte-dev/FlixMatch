@@ -8,6 +8,8 @@ import { SWIPE_ACTIONS, saveSettings, useSettings } from "../settings";
 import { LANGUAGES, useT } from "../i18n";
 import { THEMES, isUnlocked } from "../theme";
 import { Button, PageHeader } from "../components/ui";
+import ProBadge from "../components/ProBadge";
+import { PRO_FEATURES } from "../lib/pro";
 import PrivacyDangerZone from "../components/PrivacyDangerZone";
 import { posterUrl } from "../utils";
 import { buildFlixMatchExport, buildLetterboxdCsv, buildTraktCsv } from "../lib/export";
@@ -148,7 +150,20 @@ export default function Settings() {
         </label>
       </Section>
 
+      <Section title={t("proSettingsTitle")}>
+        <p className="text-sm text-zinc-400">{t("proSettingsIntro")}</p>
+        <ul className="space-y-2">
+          {Object.entries(PRO_FEATURES).map(([feature, { labelKey }]) => (
+            <li key={feature} className="flex items-center justify-between gap-3 rounded-xl bg-white/5 p-3 text-sm">
+              <span className="flex items-center gap-2"><ProBadge feature={feature} source="settings_pro" /> {t(labelKey)}</span>
+              <span className="text-xs text-emerald-300">{t("proFreeInBeta")}</span>
+            </li>
+          ))}
+        </ul>
+      </Section>
+
       <Section title="Mes plateformes de streaming">
+        <p className="flex items-center gap-2 text-xs text-zinc-400"><ProBadge feature="provider_filters" source="settings_providers" /> {t("proFeatureProviders")}</p>
         {providers.length === 0 ? (
           <p className="text-sm text-zinc-400">Aucune plateforme disponible pour cette région.</p>
         ) : (

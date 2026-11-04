@@ -34,6 +34,7 @@ export const cleanPath = (value) =>
   String(value || "")
     .replace(/[?#].*$/, "")
     .replace(/\/join\/[^/]+/, "/join/:code")
+    .replace(/\/movie-night\/[^/]+/, "/movie-night/:code")
     .replace(/\/search\/[^/]+/, "/search/:query");
 
 const cleanUrl = (value) => {
@@ -137,7 +138,7 @@ export function setAnalyticsOptOut(optOut) {
 export const routeTemplate = (url) => {
   const path = cleanPath(String(url || "").replace(/^https?:\/\/[^/]+/, ""));
   if (/^\/tmdb\//.test(path)) return path.split("/").slice(0, 3).join("/");
-  return path.replace(/\/\d+(?=\/|$)/g, "/:id").replace(/\/invite\/[^/]+/, "/invite/:code");
+  return path.replace(/\/\d+(?=\/|$)/g, "/:id").replace(/\/invite\/[^/]+/, "/invite/:code").replace(/\/night\/[^/]+/, "/night/:code");
 };
 
 const MUTATION_EVENTS = [

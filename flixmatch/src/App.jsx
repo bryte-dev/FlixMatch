@@ -25,6 +25,7 @@ import { useKonami, useTheme } from "./theme";
 import { useToast } from "./toastContext";
 import SearchResults from "./pages/SearchResults";
 import MovieDetail from "./pages/MovieDetail";
+import ProProvider from "./components/ProProvider";
 import MovieNight from "./pages/MovieNight";
 import MovieNightRoom from "./pages/MovieNightRoom";
 import { Spinner, EmptyState } from "./components/ui";
@@ -64,7 +65,7 @@ const Shell = () => {
   useTheme();
   useKonami(() => toast("🕹️ Konami ! Thèmes secrets débloqués (voir Paramètres).", "success"));
   return (
-    <>
+    <ProProvider>
       <ScrollToTop />
       <Navbar />
       <main id="contenu" key={pathname} className="page-enter flex flex-1 flex-col">
@@ -117,7 +118,7 @@ const Shell = () => {
         {" · "}Où regarder : données JustWatch via TMDB
       </footer>
       <TabBar />
-    </>
+    </ProProvider>
   );
 };
 

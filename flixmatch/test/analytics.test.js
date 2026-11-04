@@ -35,3 +35,8 @@ test("eventForRequest : appels API → événements produit", () => {
   assert.equal(eventForRequest("get", "/watchlist"), null);
   assert.equal(eventForRequest("post", "/login", { password: "x" }), null);
 });
+
+test("codes de salon Movie Night retirés des URL analytiques", () => {
+  assert.equal(cleanPath("/movie-night/ABC234"), "/movie-night/:code");
+  assert.equal(routeTemplate("/night/ABC234/start"), "/night/:code/start");
+});
