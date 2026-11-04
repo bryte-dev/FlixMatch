@@ -1224,3 +1224,10 @@ The “Tinder for Movies” aspect is currently more of a product concept than a
 
 - Pseudo unique (insensible à la casse, 3–30 caractères) ; profils accessibles via `/u/:pseudo`.
 - Chaque section du profil (vus, à voir, en cours, bibliothèque, activité) a sa propre visibilité : `public`, `friends` (suivi mutuel) ou `private` (défaut pour les nouveaux comptes). Les comptes existants gardent leurs réglages.
+
+## Movie Night (swipe collaboratif)
+
+- Page `/movie-night` : création d'un salon (code à 6 caractères + lien `/movie-night/CODE`), 2 à 8 participants, 40 cartes TMDB figées au lancement.
+- Temps réel via Server-Sent Events (`GET /night/:code/events`) + relecture de secours toutes les 15 s. Mono-instance : les flux sont gardés en mémoire (à revoir si Render passe à plusieurs instances).
+- Match quand tous les membres ont aimé le même titre ; le premier vote final déclenche la célébration chez tout le monde.
+- Tables : `NightRoom`, `NightMember`, `NightCard`, `NightSwipe` (migration `20261104180000_movie_night`).

@@ -11,6 +11,7 @@ import crypto from "crypto";
 import { fileURLToPath } from "url";
 import { validateUsername, usernameKey } from "./src/lib/username.js";
 import { isAired, airedRegularCount, seriesStatus, todayISO, daysUntil } from "./src/lib/episodes.js";
+import { MAX_PLAYERS, MIN_PLAYERS, buildDeck, generateRoomCode, isMatch, normalizeCode } from "./src/lib/night.js";
 import { getImdbRating } from "./services/omdb.js";
 import { mergeSearchResults } from "./src/lib/searchMerge.js";
 import { MAX_COMMIT_BATCH, MAX_RESOLVE_BATCH, createImporter, sanitizeCommitItem, sanitizeResolveItem } from "./services/importer.js";
@@ -1972,6 +1973,259 @@ app.put("/episodes/:seriesId/:seasonNumber/:episodeNumber", actionRateLimit, aut
     res.json({ ...entry, watched: true });
   } catch (error) {
     serverError(res, "Erreur mise à jour de l'épisode", error);
+  }
+});
+
+// ---------- Movie Night (salons de swipe collaboratifs) ----------
+
+const nightRateLimit = createRateLimit(60 * 1000, 240, "Trop de requêtes, ralentis un peu");
+const nightClients = new Map(); // roomId -> Set<res> (flux SSE ouverts)
+const MAX_NIGHT_STREAMS_PER_ROOM = MAX_PLAYERS * 3;
+
+const nightBroadcast = (roomId, event, data = {}) => {
+  for (const res of nightClients.get(roomId) || []) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+};
+
+setInterval(() => {
+  for (const clients of nightClients.values()) for (const res of clients) res.write(": ping\n\n");
+}, 25 * 1000).unref();
+
+const nightUserSelect = { id: true, username: true, avatar: true };
+const nightCardPublic = (c) => ({
+  tmdbId: c.tmdbId,
+  mediaType: c.mediaType,
+  title: c.title,
+  posterPath: c.posterPath,
+  overview: c.overview,
+  year: c.year,
+  rating: c.rating,
+});
+
+const findNightRoom = (code) =>
+  prisma.nightRoom.findUnique({
+    where: { code },
+    include: {
+      host: { select: nightUserSelect },
+      members: { orderBy: { joinedAt: "asc" }, include: { user: { select: nightUserSelect } } },
+    },
+  });
+
+// Résout le code de l'URL et vérifie l'appartenance ; répond directement en cas d'erreur
+const nightContext = async (req, res, { member = true } = {}) => {
+  const code = normalizeCode(req.params.code);
+  if (!code) {
+    res.status(400).json({ error: "Code invalide", reason: "nightCodeInvalid" });
+    return null;
+  }
+  const room = await findNightRoom(code);
+  if (!room) {
+    res.status(404).json({ error: "Salon introuvable", reason: "nightNotFound" });
+    return null;
+  }
+  const isMember = room.members.some((m) => m.userId === req.userId);
+  if (member && !isMember) {
+    res.status(403).json({ error: "Tu ne fais pas partie de ce salon", reason: "nightNotMember" });
+    return null;
+  }
+  return { room, isMember };
+};
+
+app.post("/night", nightRateLimit, authMiddleware, async (req, res) => {
+  const mediaType = req.body?.mediaType === "tv" ? "tv" : "movie";
+  const genre = req.body?.genre ? String(req.body.genre) : null;
+  if (genre && !/^\d+(,\d+)*$/.test(genre)) return res.status(400).json({ error: "Genre invalide" });
+  try {
+    const recent = await prisma.nightRoom.count({ where: { hostId: req.userId, createdAt: { gt: new Date(Date.now() - 3600 * 1000) } } });
+    if (recent >= 20) return res.status(429).json({ error: "Trop de salons créés, réessaie plus tard" });
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        const room = await prisma.nightRoom.create({
+          data: { code: generateRoomCode(), hostId: req.userId, mediaType, genre, members: { create: { userId: req.userId } } },
+          select: { code: true },
+        });
+        return res.status(201).json(room);
+      } catch (error) {
+        if (error.code !== "P2002") throw error;
+      }
+    }
+    res.status(503).json({ error: "Impossible de générer un code, réessaie" });
+  } catch (error) {
+    serverError(res, "Erreur création du salon", error);
+  }
+});
+
+app.get("/night", nightRateLimit, authMiddleware, async (req, res) => {
+  try {
+    const memberships = await prisma.nightMember.findMany({
+      where: { userId: req.userId },
+      orderBy: { joinedAt: "desc" },
+      take: 10,
+      select: { room: { select: { code: true, status: true, mediaType: true, createdAt: true, host: { select: nightUserSelect }, _count: { select: { members: true } } } } },
+    });
+    res.json(memberships.map(({ room }) => ({ code: room.code, status: room.status, mediaType: room.mediaType, createdAt: room.createdAt, host: room.host, members: room._count.members })));
+  } catch (error) {
+    serverError(res, "Erreur liste des salons", error);
+  }
+});
+
+app.get("/night/:code", nightRateLimit, authMiddleware, async (req, res) => {
+  try {
+    const ctx = await nightContext(req, res, { member: false });
+    if (!ctx) return;
+    const { room, isMember } = ctx;
+    const base = { code: room.code, status: room.status, mediaType: room.mediaType, genre: room.genre, host: room.host };
+    if (!isMember) {
+      return res.json({ member: false, joinable: room.status === "LOBBY" && room.members.length < MAX_PLAYERS, room: { ...base, members: room.members.length } });
+    }
+    const [cards, swipes] = await Promise.all([
+      prisma.nightCard.findMany({ where: { roomId: room.id }, orderBy: { position: "asc" } }),
+      prisma.nightSwipe.findMany({ where: { roomId: room.id }, select: { userId: true, tmdbId: true, mediaType: true } }),
+    ]);
+    const swipedByMe = new Set(swipes.filter((s) => s.userId === req.userId).map((s) => `${s.mediaType}-${s.tmdbId}`));
+    const perUser = new Map();
+    for (const s of swipes) perUser.set(s.userId, (perUser.get(s.userId) || 0) + 1);
+    const remaining = cards.filter((c) => !swipedByMe.has(`${c.mediaType}-${c.tmdbId}`));
+    res.json({
+      member: true,
+      isHost: room.hostId === req.userId,
+      room: { ...base, total: cards.length },
+      members: room.members.map((m) => ({ ...m.user, swiped: perUser.get(m.userId) || 0 })),
+      queue: room.status === "ACTIVE" ? remaining.slice(0, 5).map(nightCardPublic) : [],
+      remaining: remaining.length,
+      matches: cards.filter((c) => c.matchedAt).sort((a, b) => a.matchedAt - b.matchedAt).map(nightCardPublic),
+    });
+  } catch (error) {
+    serverError(res, "Erreur lecture du salon", error);
+  }
+});
+
+app.post("/night/:code/join", nightRateLimit, authMiddleware, async (req, res) => {
+  try {
+    const ctx = await nightContext(req, res, { member: false });
+    if (!ctx) return;
+    const { room, isMember } = ctx;
+    if (isMember) return res.json({ code: room.code });
+    if (room.status !== "LOBBY") return res.status(409).json({ error: "Ce salon a déjà commencé", reason: "nightStarted" });
+    if (room.members.length >= MAX_PLAYERS) return res.status(409).json({ error: "Salon complet", reason: "nightFull" });
+    await prisma.nightMember.upsert({
+      where: { roomId_userId: { roomId: room.id, userId: req.userId } },
+      create: { roomId: room.id, userId: req.userId },
+      update: {},
+    });
+    nightBroadcast(room.id, "update");
+    res.json({ code: room.code });
+  } catch (error) {
+    serverError(res, "Erreur pour rejoindre le salon", error);
+  }
+});
+
+app.post("/night/:code/start", nightRateLimit, authMiddleware, async (req, res) => {
+  try {
+    const ctx = await nightContext(req, res);
+    if (!ctx) return;
+    const { room } = ctx;
+    if (room.hostId !== req.userId) return res.status(403).json({ error: "Seul l'hôte peut lancer la partie", reason: "nightNotHost" });
+    if (room.members.length < MIN_PLAYERS) return res.status(409).json({ error: "Il faut au moins 2 participants", reason: "nightNeedPlayers" });
+    const claimed = await prisma.nightRoom.updateMany({ where: { id: room.id, status: "LOBBY" }, data: { status: "ACTIVE", startedAt: new Date() } });
+    if (claimed.count === 0) return res.status(409).json({ error: "Le salon a déjà commencé", reason: "nightStarted" });
+    try {
+      const language = langOf(req.body?.lang);
+      const firstPage = 1 + Math.floor(Math.random() * 5);
+      const params = { language, include_adult: false, "vote_count.gte": 200, sort_by: "popularity.desc" };
+      if (room.genre) params.with_genres = room.genre;
+      const pages = await Promise.all([firstPage, firstPage + 1].map((page) => tmdbGet(`/discover/${room.mediaType}`, { ...params, page }).then((d) => d.results || [])));
+      const deck = buildDeck(pages, room.mediaType);
+      if (deck.length < 10) throw new Error("Paquet trop petit");
+      await prisma.nightCard.createMany({ data: deck.map((c) => ({ ...c, roomId: room.id })) });
+    } catch (error) {
+      await prisma.nightRoom.update({ where: { id: room.id }, data: { status: "LOBBY", startedAt: null } });
+      return tmdbError(res, "Impossible de préparer les cartes", error);
+    }
+    nightBroadcast(room.id, "update");
+    res.json({ ok: true });
+  } catch (error) {
+    serverError(res, "Erreur lancement du salon", error);
+  }
+});
+
+app.post("/night/:code/swipe", nightRateLimit, authMiddleware, async (req, res) => {
+  const tmdbId = parseId(req.body?.tmdbId);
+  const { mediaType, liked } = req.body || {};
+  if (!tmdbId || !validType(mediaType) || typeof liked !== "boolean") return res.status(400).json({ error: "Swipe invalide" });
+  try {
+    const ctx = await nightContext(req, res);
+    if (!ctx) return;
+    const { room } = ctx;
+    if (room.status !== "ACTIVE") return res.status(409).json({ error: "Le salon n'est pas actif", reason: "nightNotActive" });
+    const card = await prisma.nightCard.findUnique({ where: { roomId_tmdbId_mediaType: { roomId: room.id, tmdbId, mediaType } } });
+    if (!card) return res.status(404).json({ error: "Carte introuvable" });
+
+    // Un swipe est définitif : le rejouer ne change rien (pas de double vote)
+    await prisma.nightSwipe.upsert({
+      where: { roomId_userId_tmdbId_mediaType: { roomId: room.id, userId: req.userId, tmdbId, mediaType } },
+      create: { roomId: room.id, userId: req.userId, tmdbId, mediaType, liked },
+      update: {},
+    });
+
+    // Lecture après écriture (hors transaction) : le dernier vote validé voit tous les likes
+    let match = null;
+    if (liked) {
+      const likes = await prisma.nightSwipe.count({ where: { roomId: room.id, tmdbId, mediaType, liked: true, userId: { in: room.members.map((m) => m.userId) } } });
+      if (isMatch(likes, room.members.length)) {
+        const first = await prisma.nightCard.updateMany({ where: { id: card.id, matchedAt: null }, data: { matchedAt: new Date() } });
+        if (first.count === 1) {
+          match = nightCardPublic(card);
+          nightBroadcast(room.id, "match", match);
+        }
+      }
+    }
+
+    const [swipeCount, cardCount] = await Promise.all([prisma.nightSwipe.count({ where: { roomId: room.id } }), prisma.nightCard.count({ where: { roomId: room.id } })]);
+    let ended = false;
+    if (swipeCount >= cardCount * room.members.length) {
+      const closed = await prisma.nightRoom.updateMany({ where: { id: room.id, status: "ACTIVE" }, data: { status: "ENDED", endedAt: new Date() } });
+      ended = closed.count === 1;
+    }
+    nightBroadcast(room.id, ended ? "ended" : "update");
+    res.json({ match, ended });
+  } catch (error) {
+    serverError(res, "Erreur enregistrement du swipe", error);
+  }
+});
+
+app.post("/night/:code/end", nightRateLimit, authMiddleware, async (req, res) => {
+  try {
+    const ctx = await nightContext(req, res);
+    if (!ctx) return;
+    const { room } = ctx;
+    if (room.hostId !== req.userId) return res.status(403).json({ error: "Seul l'hôte peut terminer le salon", reason: "nightNotHost" });
+    await prisma.nightRoom.updateMany({ where: { id: room.id, status: { not: "ENDED" } }, data: { status: "ENDED", endedAt: new Date() } });
+    nightBroadcast(room.id, "ended");
+    res.json({ ok: true });
+  } catch (error) {
+    serverError(res, "Erreur fin du salon", error);
+  }
+});
+
+// Flux temps réel (SSE) : les événements ne portent pas d'état, le client relit GET /night/:code
+app.get("/night/:code/events", authMiddleware, async (req, res) => {
+  try {
+    const ctx = await nightContext(req, res);
+    if (!ctx) return;
+    const { room } = ctx;
+    const clients = nightClients.get(room.id) || new Set();
+    if (clients.size >= MAX_NIGHT_STREAMS_PER_ROOM) return res.status(429).json({ error: "Trop de connexions" });
+    res.set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no" });
+    res.flushHeaders();
+    res.write("retry: 3000\n\n");
+    clients.add(res);
+    nightClients.set(room.id, clients);
+    req.on("close", () => {
+      clients.delete(res);
+      if (clients.size === 0) nightClients.delete(room.id);
+    });
+  } catch (error) {
+    serverError(res, "Erreur flux du salon", error);
   }
 });
 

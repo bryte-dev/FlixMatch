@@ -25,6 +25,9 @@ model User {
   privacyWatchlist String   @default("private")
   privacyTracking  String   @default("private") // séries en cours
   followers        Follow[] @relation("Followed")
+  nightRooms       NightRoom[]
+  nightMemberships NightMember[]
+  nightSwipes      NightSwipe[]
   following        Follow[] @relation("Follower")
 }
 
@@ -115,4 +118,74 @@ enum WatchlistStatus {
   WATCHLIST
   SEEN
   JUNK
+}
+
+// Movie Night : salon collaboratif. Le paquet de cartes est figé au lancement, les membres aussi.
+model NightRoom {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  hostId    Int
+  status    String   @default("LOBBY") // LOBBY | ACTIVE | ENDED
+  mediaType String   @default("movie") // movie | tv
+  genre     String?
+  createdAt DateTime @default(now())
+  startedAt DateTime?
+  endedAt   DateTime?
+
+  host    User          @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  members NightMember[]
+  cards   NightCard[]
+  swipes  NightSwipe[]
+
+  @@index([hostId, status])
+  @@index([createdAt])
+}
+
+model NightMember {
+  id       Int      @id @default(autoincrement())
+  roomId   Int
+  userId   Int
+  joinedAt DateTime @default(now())
+
+  room NightRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+  @@index([userId])
+}
+
+model NightCard {
+  id         Int       @id @default(autoincrement())
+  roomId     Int
+  position   Int
+  tmdbId     Int
+  mediaType  String
+  title      String
+  posterPath String?
+  overview   String?
+  year       String?
+  rating     Float?
+  matchedAt  DateTime?
+
+  room NightRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, tmdbId, mediaType])
+  @@index([roomId, position])
+}
+
+model NightSwipe {
+  id        Int      @id @default(autoincrement())
+  roomId    Int
+  userId    Int
+  tmdbId    Int
+  mediaType String
+  liked     Boolean
+  createdAt DateTime @default(now())
+
+  room NightRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId, tmdbId, mediaType])
+  @@index([roomId, tmdbId, mediaType])
+  @@index([userId])
 }

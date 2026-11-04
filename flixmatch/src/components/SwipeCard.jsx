@@ -13,7 +13,7 @@ const STAMPS = {
 };
 
 // Carte glissable (Pointer Events). Animations GPU : transform + opacity uniquement.
-const SwipeCard = forwardRef(function SwipeCard({ onSwipe, children, disabled = false }, ref) {
+const SwipeCard = forwardRef(function SwipeCard({ onSwipe, children, disabled = false, noUp = false }, ref) {
   const start = useRef(null);
   const timer = useRef(null);
   useEffect(() => () => clearTimeout(timer.current), []);
@@ -51,7 +51,7 @@ const SwipeCard = forwardRef(function SwipeCard({ onSwipe, children, disabled = 
     const dy = e.clientY - start.current.y;
     start.current = null;
     setDragging(false);
-    const direction = e.type === "pointercancel" ? null : classifySwipe(dx, dy);
+    const direction = e.type === "pointercancel" ? null : classifySwipe(dx, dy, noUp ? { y: Infinity } : undefined);
     if (!direction) {
       setDrag({ x: 0, y: 0 });
       return;
@@ -79,7 +79,7 @@ const SwipeCard = forwardRef(function SwipeCard({ onSwipe, children, disabled = 
       onPointerCancel={finish}
     >
       {children}
-      {Object.entries(STAMPS).map(([dir, { label, cls }]) => (
+      {Object.entries(STAMPS).filter(([dir]) => !(noUp && dir === "up")).map(([dir, { label, cls }]) => (
         <span
           key={dir}
           aria-hidden="true"
